@@ -1,20 +1,5 @@
-import { RepoDashboard } from "@/components/repo-dashboard"
+import { RepoDashboard, type DashboardData } from "@/components/repo-dashboard"
 import { serverFetch } from "@/lib/server-api"
-import type { Job, ManagedRepo } from "@/lib/meme-manager"
-
-type DashboardData = {
-  repos: ManagedRepo[]
-  jobs: Job[]
-  summary: {
-    count: number
-    dataRoot: string
-    managedMemesDir: string
-    memeGeneratorMemeDirsEnv: string
-    repoUrlPrefixConfigured: boolean
-    reloadConfigured: boolean
-    autoReloadEnabled: boolean
-  }
-}
 
 export const dynamic = "force-dynamic"
 

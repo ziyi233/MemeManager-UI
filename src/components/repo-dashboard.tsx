@@ -1,15 +1,18 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react"
+import { AlertTriangle, GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react"
 
 import type { Job, ManagedRepo, RepoLogEntry } from "@/lib/meme-manager"
 
-type DashboardData = {
+export type DashboardData = {
   repos: ManagedRepo[]
   jobs: Job[]
   summary: {
     count: number
+    totalMemeCount: number
+    linkedMemeCount: number
+    conflictCount: number
     dataRoot: string
     managedMemesDir: string
     memeGeneratorMemeDirsEnv: string
@@ -103,6 +106,14 @@ function formatMeta(repo: ManagedRepo) {
   if (repo.lastCommitHash) parts.push(`提交: ${repo.lastCommitHash}`)
   if (repo.lastSyncedAt) parts.push(`上次同步: ${repo.lastSyncedAt}`)
   return parts.join(" | ")
+}
+
+function formatConflict(repo: ManagedRepo, conflict: ManagedRepo["conflicts"][number]) {
+  if (conflict.ownerRepoId === repo.id) {
+    return `${conflict.memeName} 已由当前仓库占用，与 ${conflict.conflictingRepoName} 重名`
+  }
+
+  return `${conflict.memeName} 与 ${conflict.ownerRepoName} 重名，当前未写入共享目录`
 }
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit) {
@@ -388,6 +399,7 @@ export function RepoDashboard({
           <div className="mt-6 border-t border-[var(--border)] pt-4 text-[13px] leading-5 text-[var(--foreground-muted)]">
             <p>未同步仓库只保存配置，不会立刻拉代码</p>
             <p className="mt-2">同步成功后，启用中的仓库会自动汇总到共享目录</p>
+            <p className="mt-2">当前统计：{data.summary.totalMemeCount} 个表情，{data.summary.linkedMemeCount} 个已共享，{data.summary.conflictCount} 处冲突</p>
             <p className="mt-2">
               {data.summary.repoUrlPrefixConfigured
                 ? "当前已配置仓库拉取源前缀，同步时会优先走镜像源"
@@ -406,13 +418,17 @@ export function RepoDashboard({
         <section>
           <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
             <h2 className="text-[16px] font-medium">仓库列表</h2>
-            <span className="text-[13px] text-[var(--foreground-muted)]">共 {repoCount} 个</span>
+            <span className="text-[13px] text-[var(--foreground-muted)]">
+              共 {repoCount} 个，{data.summary.linkedMemeCount} 个已共享
+              {data.summary.conflictCount ? `，${data.summary.conflictCount} 处冲突` : ""}
+            </span>
           </div>
 
           <div className="divide-y divide-[var(--border)]">
             {data.repos.map((repo) => {
               const localPending = pendingRepoIds[repo.id]
               const busy = repo.status === "syncing" || repo.status === "deleting" || Boolean(localPending)
+              const conflicts = repo.conflicts || []
 
               return (
                 <article key={repo.id} className="grid gap-4 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
@@ -430,6 +446,27 @@ export function RepoDashboard({
 
                     <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">{formatMeta(repo)}</p>
                     <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">{formatDetail(repo)}</p>
+
+                    <div className="mt-3 flex flex-wrap gap-2 text-[12px]">
+                      <span className="rounded-md border border-[var(--border)] bg-white px-2.5 py-1 text-[var(--foreground-muted)]">表情 {repo.memeCount}</span>
+                      <span className="rounded-md border border-[var(--border)] bg-white px-2.5 py-1 text-[var(--foreground-muted)]">共享 {repo.linkedMemeCount}</span>
+                      {repo.conflictCount ? <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">冲突 {repo.conflictCount}</span> : null}
+                    </div>
+
+                    {conflicts.length ? (
+                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
+                        <div className="flex items-center gap-2 font-medium">
+                          <AlertTriangle aria-hidden="true" className="size-4" />
+                          重名表情
+                        </div>
+                        <div className="mt-2 grid gap-1">
+                          {conflicts.slice(0, 5).map((conflict) => (
+                            <p key={`${conflict.memeName}-${conflict.ownerRepoId}-${conflict.conflictingRepoId}`}>{formatConflict(repo, conflict)}</p>
+                          ))}
+                          {conflicts.length > 5 ? <p>还有 {conflicts.length - 5} 处冲突未显示</p> : null}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <form
                       className="mt-3 flex flex-wrap items-center gap-2"

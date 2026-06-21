@@ -31,6 +31,10 @@ export type RepoState = {
   lastError: string | null
   deleteStartedAt: string | null
   lastJobId: string | null
+  memeCount: number
+  linkedMemeCount: number
+  conflictCount: number
+  conflicts: MemeConflict[]
   recentLogs: RepoLogEntry[]
 }
 
@@ -40,6 +44,14 @@ export type RepoLogEntry = {
   timestamp: string
   level: "info" | "error"
   message: string
+}
+
+export type MemeConflict = {
+  memeName: string
+  ownerRepoId: string
+  ownerRepoName: string
+  conflictingRepoId: string
+  conflictingRepoName: string
 }
 
 export type JobStatus = "pending" | "running" | "succeeded" | "failed"
@@ -244,6 +256,10 @@ function createRepoState(repoId: string): RepoState {
     lastError: null,
     deleteStartedAt: null,
     lastJobId: null,
+    memeCount: 0,
+    linkedMemeCount: 0,
+    conflictCount: 0,
+    conflicts: [],
     recentLogs: [],
   }
 }
@@ -260,6 +276,10 @@ function normalizeRepoState(state: RepoState): RepoState {
     lastError: state.lastError ?? null,
     deleteStartedAt: state.deleteStartedAt ?? null,
     lastJobId: state.lastJobId ?? null,
+    memeCount: Number.isFinite(state.memeCount) ? state.memeCount : 0,
+    linkedMemeCount: Number.isFinite(state.linkedMemeCount) ? state.linkedMemeCount : 0,
+    conflictCount: Number.isFinite(state.conflictCount) ? state.conflictCount : 0,
+    conflicts: Array.isArray(state.conflicts) ? state.conflicts : [],
     recentLogs: Array.isArray(state.recentLogs) ? state.recentLogs : [],
   }
 }
@@ -715,6 +735,24 @@ async function isMemeContainerDirectory(targetPath: string) {
   return false
 }
 
+async function listMemeDirectoryNames(memeRootPath: string) {
+  const entries = await fs.readdir(memeRootPath, { withFileTypes: true })
+  const names: string[] = []
+
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith("_")) {
+      continue
+    }
+
+    const initFile = path.join(memeRootPath, entry.name, "__init__.py")
+    if (await pathExists(initFile)) {
+      names.push(entry.name)
+    }
+  }
+
+  return names.sort((left, right) => left.localeCompare(right))
+}
+
 async function detectMemeRoot(repoPath: string) {
   for (const candidate of MEME_ROOT_CANDIDATES) {
     const candidatePath = path.join(repoPath, candidate)
@@ -811,6 +849,7 @@ async function maybeAutoReloadMemeApi(jobId?: string) {
 async function rebuildManagedMemes(jobId?: string) {
   const { configStore, stateStore } = await getStores()
   const stateMap = new Map(stateStore.states.map((state) => [state.repoId, state]))
+  const repoMap = new Map(configStore.repos.map((repo) => [repo.id, repo]))
 
   async function log(message: string) {
     if (jobId) {
@@ -823,13 +862,30 @@ async function rebuildManagedMemes(jobId?: string) {
     await log("清理旧的共享 meme 目录")
     await fs.rm(managedDir, { recursive: true, force: true })
     await ensureDir(managedDir)
-    await log("开始重建共享 meme 目录")
+      await log("开始重建共享 meme 目录")
 
-    const linkedNames = new Map<string, string>()
+    const linkedNames = new Map<string, { repoId: string; repoName: string }>()
+    const stats = new Map<
+      string,
+      {
+        memeCount: number
+        linkedMemeCount: number
+        conflicts: MemeConflict[]
+      }
+    >()
+
+    for (const repo of configStore.repos) {
+      stats.set(repo.id, {
+        memeCount: 0,
+        linkedMemeCount: 0,
+        conflicts: [],
+      })
+    }
 
     for (const repo of configStore.repos) {
       const state = stateMap.get(repo.id)
-      if (!repo.enabled || state?.status !== "ready" || !state.memeRoot) {
+      const repoStats = stats.get(repo.id)
+      if (!repoStats || state?.status !== "ready" || !state.memeRoot) {
         continue
       }
 
@@ -842,30 +898,59 @@ async function rebuildManagedMemes(jobId?: string) {
 
       await log(`扫描仓库 ${repo.name} 的表情目录：${state.memeRoot}`)
 
-      const entries = await fs.readdir(memeRootPath, { withFileTypes: true })
-      for (const entry of entries) {
-        if (!entry.isDirectory() || entry.name.startsWith("_")) {
-          continue
-        }
+      const memeNames = await listMemeDirectoryNames(memeRootPath)
+      repoStats.memeCount = memeNames.length
 
-        const sourceDir = path.join(memeRootPath, entry.name)
-        const initFile = path.join(sourceDir, "__init__.py")
-        if (!(await pathExists(initFile))) {
-          continue
-        }
+      if (!repo.enabled) {
+        await log(`仓库 ${repo.name} 已停用，统计 ${memeNames.length} 个表情目录但不写入共享目录`)
+        continue
+      }
 
-        const existingOwner = linkedNames.get(entry.name)
+      for (const memeName of memeNames) {
+        const sourceDir = path.join(memeRootPath, memeName)
+
+        const existingOwner = linkedNames.get(memeName)
         if (existingOwner) {
-          throw new Error(`表情目录重名: ${entry.name} 同时存在于 ${existingOwner} 和 ${repo.name}`)
+          const conflict: MemeConflict = {
+            memeName,
+            ownerRepoId: existingOwner.repoId,
+            ownerRepoName: existingOwner.repoName,
+            conflictingRepoId: repo.id,
+            conflictingRepoName: repo.name,
+          }
+
+          stats.get(existingOwner.repoId)?.conflicts.push(conflict)
+          repoStats.conflicts.push(conflict)
+          await log(`发现重名表情 ${memeName}: ${existingOwner.repoName} 已占用，跳过 ${repo.name}`)
+          continue
         }
 
-        linkedNames.set(entry.name, repo.name)
-        await createDirectoryLink(sourceDir, path.join(managedDir, entry.name))
-        await log(`已链接表情目录 ${entry.name} <- ${repo.name}`)
+        linkedNames.set(memeName, { repoId: repo.id, repoName: repo.name })
+        await createDirectoryLink(sourceDir, path.join(managedDir, memeName))
+        repoStats.linkedMemeCount += 1
+        await log(`已链接表情目录 ${memeName} <- ${repo.name}`)
       }
     }
 
-    await log(`共享 meme 目录重建完成，共 ${linkedNames.size} 个表情目录`)
+    const nextStates = stateStore.states.map((state) => {
+      const repo = repoMap.get(state.repoId)
+      const repoStats = stats.get(state.repoId)
+      if (!repo || !repoStats) {
+        return normalizeRepoState(state)
+      }
+
+      return normalizeRepoState({
+        ...state,
+        memeCount: repoStats.memeCount,
+        linkedMemeCount: repoStats.linkedMemeCount,
+        conflictCount: repoStats.conflicts.length,
+        conflicts: repoStats.conflicts,
+      })
+    })
+    await writeStateStore({ states: nextStates })
+
+    const conflictCount = [...stats.values()].reduce((total, item) => total + item.conflicts.length, 0) / 2
+    await log(`共享 meme 目录重建完成，共 ${linkedNames.size} 个表情目录，发现 ${conflictCount} 处冲突`)
   })
 }
 
@@ -954,8 +1039,15 @@ export async function listRepos() {
 
 export async function getManagerSummary() {
   const repos = await listRepos()
+  const totalMemeCount = repos.reduce((total, repo) => total + repo.memeCount, 0)
+  const linkedMemeCount = repos.reduce((total, repo) => total + repo.linkedMemeCount, 0)
+  const conflictCount = repos.reduce((total, repo) => total + repo.conflictCount, 0) / 2
+
   return {
     count: repos.length,
+    totalMemeCount,
+    linkedMemeCount,
+    conflictCount,
     dataRoot: getDataRoot(),
     managedMemesDir: getManagedMemesDir(),
     memeGeneratorMemeDirsEnv: JSON.stringify([getManagedMemesDir()]),
