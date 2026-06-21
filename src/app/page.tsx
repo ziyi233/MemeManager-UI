@@ -19,7 +19,7 @@ export default async function Home({
         跳到内容
       </a>
 
-      <div className="mx-auto flex min-h-screen w-full max-w-[1200px] flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-8">
+      <div className="mx-auto flex min-h-screen w-full max-w-[1480px] flex-col px-4 pb-16 pt-6 sm:px-6 lg:px-8">
         <RepoDashboard
           initialData={dashboardData}
         />
