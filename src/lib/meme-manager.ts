@@ -28,9 +28,37 @@ export type RepoState = {
   lastCommitHash: string | null
   lastError: string | null
   deleteStartedAt: string | null
+  lastJobId: string | null
+  recentLogs: RepoLogEntry[]
 }
 
 export type ManagedRepo = RepoConfig & RepoState
+
+export type RepoLogEntry = {
+  timestamp: string
+  level: "info" | "error"
+  message: string
+}
+
+export type JobStatus = "pending" | "running" | "succeeded" | "failed"
+
+export type Job = {
+  id: string
+  type: "sync" | "sync_all" | "remove" | "reload"
+  repoId: string | null
+  repoName: string | null
+  status: JobStatus
+  createdAt: string
+  startedAt: string | null
+  finishedAt: string | null
+  message: string | null
+  error: string | null
+  logs: RepoLogEntry[]
+}
+
+type SyncTaskResult = SyncResult & {
+  logs: string[]
+}
 
 type RepoConfigStore = {
   repos: RepoConfig[]
@@ -38,6 +66,10 @@ type RepoConfigStore = {
 
 type RepoStateStore = {
   states: RepoState[]
+}
+
+type JobStore = {
+  jobs: Job[]
 }
 
 type ExampleConfig = {
@@ -90,6 +122,10 @@ function getStateFile() {
   return path.join(getStateDir(), "repos-state.json")
 }
 
+function getJobsFile() {
+  return path.join(getStateDir(), "jobs.json")
+}
+
 function getExampleConfigFile() {
   return path.join(getDataRoot(), "example-config.json")
 }
@@ -104,6 +140,10 @@ function getManagedMemesDir() {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+function buildJobId() {
+  return `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function isTruthy(value?: string) {
@@ -195,6 +235,8 @@ function createRepoState(repoId: string): RepoState {
     lastCommitHash: null,
     lastError: null,
     deleteStartedAt: null,
+    lastJobId: null,
+    recentLogs: [],
   }
 }
 
@@ -209,6 +251,21 @@ function normalizeRepoState(state: RepoState): RepoState {
     lastCommitHash: state.lastCommitHash ?? null,
     lastError: state.lastError ?? null,
     deleteStartedAt: state.deleteStartedAt ?? null,
+    lastJobId: state.lastJobId ?? null,
+    recentLogs: Array.isArray(state.recentLogs) ? state.recentLogs : [],
+  }
+}
+
+function normalizeJob(job: Job): Job {
+  return {
+    ...job,
+    repoId: job.repoId ?? null,
+    repoName: job.repoName ?? null,
+    startedAt: job.startedAt ?? null,
+    finishedAt: job.finishedAt ?? null,
+    message: job.message ?? null,
+    error: job.error ?? null,
+    logs: Array.isArray(job.logs) ? job.logs : [],
   }
 }
 
@@ -344,6 +401,10 @@ async function seedDefaultDataIfNeeded() {
   if (!(await pathExists(statePath))) {
     await writeJsonFile(statePath, { states })
   }
+
+  if (!(await pathExists(getJobsFile()))) {
+    await writeJsonFile(getJobsFile(), { jobs: [] })
+  }
 }
 
 async function readConfigStore(): Promise<RepoConfigStore> {
@@ -362,6 +423,14 @@ async function readStateStore(): Promise<RepoStateStore> {
   }
 }
 
+async function readJobStore(): Promise<JobStore> {
+  await seedDefaultDataIfNeeded()
+  const parsed = await readJsonFile<JobStore>(getJobsFile(), { jobs: [] })
+  return {
+    jobs: Array.isArray(parsed.jobs) ? parsed.jobs.map((job) => normalizeJob(job)) : [],
+  }
+}
+
 async function writeConfigStore(store: RepoConfigStore) {
   await ensureStorage()
   await writeJsonFile(getConfigFile(), store)
@@ -371,6 +440,13 @@ async function writeStateStore(store: RepoStateStore) {
   await ensureStorage()
   await withWriteLock("state", async () => {
     await writeJsonFile(getStateFile(), store)
+  })
+}
+
+async function writeJobStore(store: JobStore) {
+  await ensureStorage()
+  await withWriteLock("state", async () => {
+    await writeJsonFile(getJobsFile(), store)
   })
 }
 
@@ -410,11 +486,125 @@ async function saveStatePatch(repoId: string, patch: Partial<RepoState>) {
   await writeStateStore(stateStore)
 }
 
+async function pushRepoLog(repoId: string, level: "info" | "error", message: string) {
+  const entry: RepoLogEntry = {
+    timestamp: nowIso(),
+    level,
+    message,
+  }
+
+  const stateStore = await readStateStore()
+  const index = stateStore.states.findIndex((state) => state.repoId === repoId)
+  if (index === -1) {
+    stateStore.states.push({
+      ...createRepoState(repoId),
+      recentLogs: [entry],
+      repoId,
+    })
+  } else {
+    const logs = [...(stateStore.states[index].recentLogs || []), entry].slice(-50)
+    stateStore.states[index] = normalizeRepoState({
+      ...stateStore.states[index],
+      recentLogs: logs,
+      repoId,
+    })
+  }
+
+  await writeStateStore(stateStore)
+}
+
+async function createJob(input: Pick<Job, "type" | "repoId" | "repoName" | "message">) {
+  const jobStore = await readJobStore()
+  const job: Job = {
+    id: buildJobId(),
+    type: input.type,
+    repoId: input.repoId,
+    repoName: input.repoName,
+    status: "pending",
+    createdAt: nowIso(),
+    startedAt: null,
+    finishedAt: null,
+    message: input.message,
+    error: null,
+    logs: [],
+  }
+  jobStore.jobs.unshift(job)
+  jobStore.jobs = jobStore.jobs.slice(0, 100)
+  await writeJobStore(jobStore)
+  if (job.repoId) {
+    await saveStatePatch(job.repoId, { lastJobId: job.id })
+  }
+  return job
+}
+
+async function updateJob(jobId: string, patch: Partial<Job>) {
+  const jobStore = await readJobStore()
+  const index = jobStore.jobs.findIndex((job) => job.id === jobId)
+  if (index === -1) {
+    return
+  }
+  jobStore.jobs[index] = normalizeJob({
+    ...jobStore.jobs[index],
+    ...patch,
+    id: jobStore.jobs[index].id,
+  })
+  await writeJobStore(jobStore)
+}
+
+async function appendJobLog(jobId: string, level: "info" | "error", message: string) {
+  const entry: RepoLogEntry = {
+    timestamp: nowIso(),
+    level,
+    message,
+  }
+
+  const jobStore = await readJobStore()
+  const index = jobStore.jobs.findIndex((job) => job.id === jobId)
+  if (index === -1) {
+    return
+  }
+  const job = jobStore.jobs[index]
+  jobStore.jobs[index] = normalizeJob({
+    ...job,
+    logs: [...job.logs, entry].slice(-100),
+  })
+  await writeJobStore(jobStore)
+  if (job.repoId) {
+    await pushRepoLog(job.repoId, level, message)
+  }
+}
+
+async function startJob(jobId: string, message: string) {
+  await updateJob(jobId, {
+    status: "running",
+    startedAt: nowIso(),
+    message,
+  })
+  await appendJobLog(jobId, "info", message)
+}
+
+async function finishJob(jobId: string, status: JobStatus, message: string, error?: string) {
+  await updateJob(jobId, {
+    status,
+    finishedAt: nowIso(),
+    message,
+    error: error || null,
+  })
+  await appendJobLog(jobId, status === "failed" ? "error" : "info", message)
+  if (error) {
+    await appendJobLog(jobId, "error", error)
+  }
+}
+
 async function runGit(args: string[], cwd?: string) {
-  await execFileAsync("git", args, {
+  const result = await execFileAsync("git", args, {
     cwd,
     windowsHide: true,
   })
+  return {
+    stdout: result.stdout.trim(),
+    stderr: result.stderr.trim(),
+  }
 }
 
 async function readGitOutput(args: string[], cwd?: string) {
@@ -576,23 +766,37 @@ async function rebuildManagedMemes() {
   })
 }
 
-async function performSync(repo: RepoConfig): Promise<SyncResult> {
+async function performSync(repo: RepoConfig, jobId?: string): Promise<SyncTaskResult> {
   const repoDir = getRepoDirectory(repo.id)
   const remoteUrl = resolveRepoGitUrl(repo.url)
   let beforeHash: string | null = null
+  const logs: string[] = []
+
+  async function log(message: string) {
+    logs.push(message)
+    if (jobId) {
+      await appendJobLog(jobId, "info", message)
+    }
+  }
 
   if (await isGitRepository(repoDir)) {
+    await log(`更新远端地址为 ${remoteUrl}`)
     beforeHash = await readGitOutput(["rev-parse", "--short", "HEAD"], repoDir)
     await runGit(["remote", "set-url", "origin", remoteUrl], repoDir)
+    await log(`抓取分支 ${repo.branch}`)
     await runGit(["fetch", "origin", repo.branch], repoDir)
+    await log(`切换到分支 ${repo.branch}`)
     await runGit(["checkout", repo.branch], repoDir)
+    await log(`拉取最新提交 ${repo.branch}`)
     await runGit(["pull", "--ff-only", "origin", repo.branch], repoDir)
   } else {
     if (await pathExists(repoDir)) {
+      await log("检测到残留目录，先清理后重新拉取")
       await fs.rm(repoDir, { recursive: true, force: true })
     }
 
     try {
+      await log(`克隆仓库 ${remoteUrl}`)
       await runGit(["clone", "--branch", repo.branch, "--single-branch", remoteUrl, repoDir])
     } catch (error) {
       await fs.rm(repoDir, { recursive: true, force: true })
@@ -600,17 +804,21 @@ async function performSync(repo: RepoConfig): Promise<SyncResult> {
     }
   }
 
+  await log("识别表情根目录")
   const detectedRoot = repo.customMemeRoot || (await detectMemeRoot(repoDir))
   if (!detectedRoot) {
     throw new Error("没有找到可加载的 meme 根目录，请手动填写 Meme Root")
   }
 
   const afterHash = await readGitOutput(["rev-parse", "--short", "HEAD"], repoDir)
+  await log(`识别结果：${detectedRoot}`)
+  await log(`当前提交：${afterHash}`)
 
   return {
     updated: !beforeHash || beforeHash !== afterHash,
     commitHash: afterHash || null,
     memeRoot: detectedRoot,
+    logs,
   }
 }
 
@@ -646,7 +854,8 @@ export async function getManagerSummary() {
 export async function getDashboardData() {
   const repos = await listRepos()
   const summary = await getManagerSummary()
-  return { repos, summary }
+  const jobs = (await readJobStore()).jobs.slice(0, 12)
+  return { repos, summary, jobs }
 }
 
 export async function addRepo(input: {
@@ -696,19 +905,29 @@ export async function requestRepoSync(repoId: string) {
     return { queued: false }
   }
 
+  const job = await createJob({
+    type: "sync",
+    repoId: repo.id,
+    repoName: repo.name,
+    message: "等待同步仓库",
+  })
+
   await saveStatePatch(repoId, {
     status: "syncing",
     statusMessage: "正在同步仓库",
     lastSyncStartedAt: nowIso(),
     lastError: null,
     deleteStartedAt: null,
+    lastJobId: job.id,
   })
 
   queueBackgroundTask(async () => {
     await withRepoLock(repoId, async () => {
       try {
-        const result = await performSync(repo)
+        await startJob(job.id, `开始同步仓库 ${repo.name}`)
+        const result = await performSync(repo, job.id)
         const finishedAt = nowIso()
+        await appendJobLog(job.id, "info", "重建共享 meme 目录")
         await saveStatePatch(repoId, {
           status: "ready",
           statusMessage: result.updated ? `同步完成，已更新到 ${result.commitHash || "最新提交"}` : "已是最新版本",
@@ -717,9 +936,12 @@ export async function requestRepoSync(repoId: string) {
           lastSyncedAt: finishedAt,
           lastSyncFinishedAt: finishedAt,
           lastError: null,
+          recentLogs: [],
         })
         await rebuildManagedMemes()
+        await appendJobLog(job.id, "info", "共享 meme 目录重建完成")
         await maybeAutoReloadMemeApi()
+        await finishJob(job.id, "succeeded", `同步完成：${repo.name}`)
       } catch (error) {
         await saveStatePatch(repoId, {
           status: "error",
@@ -727,18 +949,28 @@ export async function requestRepoSync(repoId: string) {
           lastSyncFinishedAt: nowIso(),
           lastError: formatError(error),
         })
+        await finishJob(job.id, "failed", `同步失败：${repo.name}`, formatError(error))
       }
     })
   })
 
-  return { queued: true }
+  return { queued: true, jobId: job.id }
 }
 
 export async function requestSyncAllRepos() {
+  const job = await createJob({
+    type: "sync_all",
+    repoId: null,
+    repoName: null,
+    message: "等待全部同步",
+  })
+  await startJob(job.id, "开始批量同步仓库")
   const repos = await readConfigStore()
   for (const repo of repos.repos) {
+    await appendJobLog(job.id, "info", `加入队列：${repo.name}`)
     await requestRepoSync(repo.id)
   }
+  await finishJob(job.id, "succeeded", "已将全部仓库加入同步队列")
 }
 
 export async function toggleRepoEnabled(repoId: string) {
@@ -787,27 +1019,41 @@ export async function requestRemoveRepo(repoId: string) {
     return { queued: false }
   }
 
+  const job = await createJob({
+    type: "remove",
+    repoId: repo.id,
+    repoName: repo.name,
+    message: "等待删除仓库",
+  })
+
   await saveStatePatch(repoId, {
     status: "deleting",
     statusMessage: "正在删除仓库",
     deleteStartedAt: nowIso(),
     lastError: null,
+    lastJobId: job.id,
   })
 
   queueBackgroundTask(async () => {
     await withRepoLock(repoId, async () => {
       try {
+        await startJob(job.id, `开始删除仓库 ${repo.name}`)
         const latestConfig = await readConfigStore()
         latestConfig.repos = latestConfig.repos.filter((item) => item.id !== repoId)
         await writeConfigStore(latestConfig)
+        await appendJobLog(job.id, "info", "已移除仓库配置")
 
         const latestState = await readStateStore()
         latestState.states = latestState.states.filter((item) => item.repoId !== repoId)
         await writeStateStore(latestState)
+        await appendJobLog(job.id, "info", "已移除仓库状态")
 
         await fs.rm(getRepoDirectory(repoId), { recursive: true, force: true })
+        await appendJobLog(job.id, "info", "已删除本地仓库目录")
         await rebuildManagedMemes()
+        await appendJobLog(job.id, "info", "共享 meme 目录重建完成")
         await maybeAutoReloadMemeApi()
+        await finishJob(job.id, "succeeded", `删除完成：${repo.name}`)
       } catch (error) {
         await saveStatePatch(repoId, {
           status: "error",
@@ -815,11 +1061,12 @@ export async function requestRemoveRepo(repoId: string) {
           deleteStartedAt: null,
           lastError: formatError(error),
         })
+        await finishJob(job.id, "failed", `删除失败：${repo.name}`, formatError(error))
       }
     })
   })
 
-  return { queued: true }
+  return { queued: true, jobId: job.id }
 }
 
 export async function updateRepoMemeRoot(repoId: string, memeRoot: string) {
@@ -849,7 +1096,22 @@ export async function updateRepoMemeRoot(repoId: string, memeRoot: string) {
 }
 
 export async function reloadMemeApi() {
-  return triggerMemeApiReload()
+  const job = await createJob({
+    type: "reload",
+    repoId: null,
+    repoName: null,
+    message: "等待重载 Meme API",
+  })
+
+  await startJob(job.id, "开始重载 Meme API")
+  try {
+    const result = await triggerMemeApiReload()
+    await finishJob(job.id, "succeeded", "Meme API 重载完成")
+    return { ...result, jobId: job.id }
+  } catch (error) {
+    await finishJob(job.id, "failed", "Meme API 重载失败", formatError(error))
+    throw error
+  }
 }
 
 export function getComposeExample() {

@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useState } from "react"
 import { GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react"
 
-import type { ManagedRepo } from "@/lib/meme-manager"
+import type { Job, ManagedRepo, RepoLogEntry } from "@/lib/meme-manager"
 
 type DashboardData = {
   repos: ManagedRepo[]
+  jobs: Job[]
   summary: {
     count: number
     dataRoot: string
@@ -16,6 +17,42 @@ type DashboardData = {
     reloadConfigured: boolean
     autoReloadEnabled: boolean
   }
+}
+
+function getJobStatusLabel(status: Job["status"]) {
+  switch (status) {
+    case "running":
+      return "进行中"
+    case "succeeded":
+      return "成功"
+    case "failed":
+      return "失败"
+    default:
+      return "排队中"
+  }
+}
+
+function getJobTone(status: Job["status"]): RepoTone {
+  if (status === "succeeded") return "success"
+  if (status === "failed") return "danger"
+  return "pending"
+}
+
+function formatJobType(type: Job["type"]) {
+  switch (type) {
+    case "sync":
+      return "同步仓库"
+    case "sync_all":
+      return "全部同步"
+    case "remove":
+      return "移除仓库"
+    default:
+      return "重载 API"
+  }
+}
+
+function formatLog(log: RepoLogEntry) {
+  return `${log.timestamp} ${log.level === "error" ? "[ERROR]" : "[INFO]"} ${log.message}`
 }
 
 type RepoTone = "success" | "pending" | "danger"
@@ -388,6 +425,29 @@ export function RepoDashboard({
               )
             })}
           </div>
+
+          <section className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] p-5">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <h2 className="text-[16px] font-medium">最近任务</h2>
+              <span className="text-[13px] text-[var(--foreground-muted)]">显示最近 {data.jobs.length} 条</span>
+            </div>
+
+            <div className="divide-y divide-[var(--border)]">
+              {data.jobs.map((job) => (
+                <article key={job.id} className="py-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="text-[14px] font-medium">{formatJobType(job.type)}</span>
+                    <span className={`rounded-full border px-2.5 py-1 text-[12px] ${statusClassName[getJobTone(job.status)]}`}>{getJobStatusLabel(job.status)}</span>
+                    {job.repoName ? <span className="text-[13px] text-[var(--foreground-muted)]">{job.repoName}</span> : null}
+                  </div>
+                  <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
+                  {job.logs.length ? (
+                    <pre className="mt-3 overflow-x-auto rounded-md border border-[var(--border)] bg-white p-3 text-[12px] leading-5 text-[var(--foreground)] whitespace-pre-wrap">{job.logs.slice(-8).map((log) => formatLog(log)).join("\n")}</pre>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+          </section>
         </section>
       </section>
     </>

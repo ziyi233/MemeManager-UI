@@ -1,5 +1,5 @@
 import { RepoDashboard } from "@/components/repo-dashboard"
-import { getDashboardData } from "@/lib/meme-manager"
+import { serverFetch } from "@/lib/server-api"
 
 export const dynamic = "force-dynamic"
 
@@ -7,7 +7,8 @@ export default async function Home({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
-  const dashboardData = await getDashboardData()
+  const { data } = await serverFetch("/repos")
+  const dashboardData = data as Parameters<typeof RepoDashboard>[0]["initialData"]
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">
