@@ -177,7 +177,12 @@ export function RepoDashboard({
           jobs: nextJobs.slice(0, 30),
         }
       })
-      setSelectedJobId((current) => current || payload.job.id)
+      setSelectedJobId((current) => {
+        if (payload.job.status === "failed") {
+          return payload.job.id
+        }
+        return current || payload.job.id
+      })
     }
 
     eventSource.addEventListener("job_created", (event) => handleJobEvent(event as MessageEvent<string>))

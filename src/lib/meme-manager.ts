@@ -794,22 +794,36 @@ async function triggerMemeApiReload(): Promise<ReloadResult> {
   throw new Error("未配置 Meme API 重载方式")
 }
 
-async function maybeAutoReloadMemeApi() {
+async function maybeAutoReloadMemeApi(jobId?: string) {
   if (!isAutoReloadEnabled() || !isReloadConfigured()) {
     return
   }
 
+  if (jobId) {
+    await appendJobLog(jobId, "info", "开始自动重载 Meme API")
+  }
   await triggerMemeApiReload()
+  if (jobId) {
+    await appendJobLog(jobId, "info", "自动重载 Meme API 完成")
+  }
 }
 
-async function rebuildManagedMemes() {
+async function rebuildManagedMemes(jobId?: string) {
   const { configStore, stateStore } = await getStores()
   const stateMap = new Map(stateStore.states.map((state) => [state.repoId, state]))
 
+  async function log(message: string) {
+    if (jobId) {
+      await appendJobLog(jobId, "info", message)
+    }
+  }
+
   await withWriteLock("rebuild", async () => {
     const managedDir = getManagedMemesDir()
+    await log("清理旧的共享 meme 目录")
     await fs.rm(managedDir, { recursive: true, force: true })
     await ensureDir(managedDir)
+    await log("开始重建共享 meme 目录")
 
     const linkedNames = new Map<string, string>()
 
@@ -822,8 +836,11 @@ async function rebuildManagedMemes() {
       const repoDir = getRepoDirectory(repo.id)
       const memeRootPath = path.resolve(repoDir, state.memeRoot)
       if (!(await pathExists(memeRootPath))) {
+        await log(`跳过仓库 ${repo.name}，根目录不存在：${state.memeRoot}`)
         continue
       }
+
+      await log(`扫描仓库 ${repo.name} 的表情目录：${state.memeRoot}`)
 
       const entries = await fs.readdir(memeRootPath, { withFileTypes: true })
       for (const entry of entries) {
@@ -844,8 +861,11 @@ async function rebuildManagedMemes() {
 
         linkedNames.set(entry.name, repo.name)
         await createDirectoryLink(sourceDir, path.join(managedDir, entry.name))
+        await log(`已链接表情目录 ${entry.name} <- ${repo.name}`)
       }
     }
+
+    await log(`共享 meme 目录重建完成，共 ${linkedNames.size} 个表情目录`)
   })
 }
 
@@ -1032,9 +1052,8 @@ export async function requestRepoSync(repoId: string) {
           lastError: null,
           recentLogs: [],
         })
-        await rebuildManagedMemes()
-        await appendJobLog(job.id, "info", "共享 meme 目录重建完成")
-        await maybeAutoReloadMemeApi()
+        await rebuildManagedMemes(job.id)
+        await maybeAutoReloadMemeApi(job.id)
         await finishJob(job.id, "succeeded", `同步完成：${repo.name}`)
       } catch (error) {
         await saveStatePatch(repoId, {
@@ -1144,9 +1163,8 @@ export async function requestRemoveRepo(repoId: string) {
 
         await fs.rm(getRepoDirectory(repoId), { recursive: true, force: true })
         await appendJobLog(job.id, "info", "已删除本地仓库目录")
-        await rebuildManagedMemes()
-        await appendJobLog(job.id, "info", "共享 meme 目录重建完成")
-        await maybeAutoReloadMemeApi()
+        await rebuildManagedMemes(job.id)
+        await maybeAutoReloadMemeApi(job.id)
         await finishJob(job.id, "succeeded", `删除完成：${repo.name}`)
       } catch (error) {
         await saveStatePatch(repoId, {
@@ -1199,7 +1217,9 @@ export async function reloadMemeApi() {
 
   await startJob(job.id, "开始重载 Meme API")
   try {
+    await appendJobLog(job.id, "info", "准备调用 Meme API reload")
     const result = await triggerMemeApiReload()
+    await appendJobLog(job.id, "info", result.mode === "url" ? "已通过 URL 调用 reload" : "已通过命令调用 reload")
     await finishJob(job.id, "succeeded", "Meme API 重载完成")
     return { ...result, jobId: job.id }
   } catch (error) {
