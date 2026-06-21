@@ -360,7 +360,7 @@ export function RepoDashboard({
         </section>
       ) : null}
 
-      <section className="grid gap-8 py-8 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <section className="grid min-w-0 gap-8 py-8 2xl:grid-cols-[360px_minmax(0,1fr)]">
         <section className="grid h-fit min-w-0 gap-5">
           <section id="content" className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] p-5" style={{ scrollMarginTop: 24 }}>
             <h2 className="text-[16px] font-medium">添加仓库</h2>
@@ -428,14 +428,14 @@ export function RepoDashboard({
                   key={job.id}
                   type="button"
                   onClick={() => setSelectedJobId(job.id)}
-                  className={`min-w-[220px] rounded-md border px-3 py-3 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
+                  className={`min-w-[200px] rounded-md border px-3 py-2.5 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[13px] font-medium">{formatJobType(job.type)}</span>
+                    <span className="text-[12px] font-medium text-[var(--foreground)]">{formatJobType(job.type)}</span>
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClassName[getJobTone(job.status)]}`}>{getJobStatusLabel(job.status)}</span>
                   </div>
-                  <p className="mt-2 truncate text-[12px] text-[var(--foreground-muted)]">{job.repoName || "全局任务"}</p>
-                  <p className="mt-1 truncate text-[12px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
+                  <p className="mt-1.5 truncate text-[11px] text-[var(--foreground-muted)]">{job.repoName || "全局任务"}</p>
+                  <p className="mt-1 truncate text-[11px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
                 </button>
               )) : <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>}
             </div>
@@ -456,8 +456,8 @@ export function RepoDashboard({
           </section>
         </section>
 
-        <section className="min-w-0">
-          <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+        <section className="min-w-0 rounded-xl border border-[var(--border)] bg-white p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] pb-3">
             <h2 className="text-[16px] font-medium">仓库列表</h2>
             <span className="text-[13px] text-[var(--foreground-muted)]">
               共 {repoCount} 个，{data.summary.linkedMemeCount} 个已共享
