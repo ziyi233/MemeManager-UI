@@ -21,6 +21,7 @@ RUN mkdir -p /data
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+COPY --from=builder /app/data/example-config.json ./data/example-config.json
 
 EXPOSE 3000
 

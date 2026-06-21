@@ -3,5 +3,8 @@
 .next
 node_modules
 npm-debug.log*
-data
 README.md
+data/config
+data/state
+data/repos
+data/managed

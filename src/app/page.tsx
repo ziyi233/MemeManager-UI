@@ -1,6 +1,8 @@
 import { RepoDashboard } from "@/components/repo-dashboard"
 import { getDashboardData } from "@/lib/meme-manager"
 
+export const dynamic = "force-dynamic"
+
 export default async function Home({
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>

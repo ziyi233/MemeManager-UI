@@ -1,21 +1,55 @@
 # MemeManager UI
 
-表情仓库管理台
+`MemeManager UI` 是一个给 `meme-generator` 用的扩展仓库管理面板
 
-## 目标
+它解决的事情很简单：
 
-- 管理额外表情仓库
-- 自动拉取 Git 更新
-- 自动识别仓库里的 meme 根目录
-- 为 `meme-generator` 提供统一的外部表情目录
-- 后续通过 GitHub Actions 自动构建镜像
+- 管理多个额外表情仓库
+- 按需同步，不同步就只保留配置
+- 自动识别仓库里的表情根目录
+- 把已启用仓库汇总到一个固定目录，供 `meme-generator` 读取
 
-## 技术栈
+## 功能
 
-- `Next.js 16`
-- `React 19`
-- `TypeScript`
-- `Tailwind CSS 4`
+- 添加、启用、停用、移除扩展仓库
+- 单仓库同步、全部同步
+- 后台异步执行 `git clone` / `git pull`
+- 实时显示同步中、删除中、异常、已同步状态
+- 用 `JSON` 持久化配置和运行状态，不依赖数据库
+
+## 适用场景
+
+如果你在用 `meme-generator`，又想同时挂多个扩展表情仓库，这个项目就是拿来干这个的
+
+它不会把每个仓库路径都塞进 `MEME_DIRS`
+
+它会把所有启用仓库里的表情目录统一汇总到一个固定目录，比如：`/data/managed/memes`
+
+然后 `meme-generator` 只需要读取这一个目录
+
+## 支持的仓库结构
+
+项目会自动尝试识别这些常见根目录：
+
+- `memes`
+- `meme`
+- `emoji`
+
+如果自动识别失败，也可以手动填写表情根目录
+
+## 已验证的预置仓库
+
+- `MemeCrafters/meme-generator-contrib`，分支 `main`，根目录 `memes`
+- `anyliew/meme_emoji`，分支 `main`，根目录 `emoji`
+- `jinjiao007/meme-generator-jj`，分支 `master`，根目录 `memes`
+- `anyliew/crazy_emoji`，分支 `main`，根目录 `emoji`
+- `LRZ9712/tudou-meme`，分支 `main`，根目录 `meme`
+- `xiaoruange39/xiaoruan-meme`，分支 `main`，根目录 `emoji`
+
+注意：
+
+- `meme_emoji` 和 `tudou-meme` 之间存在目录重名，启用并同步后可能触发冲突
+- `MemeManager UI` 会阻止把两个同名表情目录同时汇总进共享目录
 
 ## 本地开发
 
@@ -28,55 +62,33 @@ npm run dev
 
 健康检查：`/api/health`
 
-## `meme-generator` 是怎么加载额外表情的
+## 数据目录
 
-- 它读取配置文件里的 `meme_dirs`
-- `meme_dirs` 里的每个目录，都会被当成一个“meme 容器目录”扫描
-- 这个目录的下一层，每个带 `__init__.py` 的子目录都会被当成一个 meme 模块加载
+运行时数据默认写在 `data/` 下面：
 
-目录结构要长这样：
+- `data/example-config.json`：预置仓库模板
+- `data/config/repos.json`：实际仓库配置
+- `data/state/repos-state.json`：运行状态
+- `data/repos/`：clone 下来的仓库
+- `data/managed/memes/`：汇总后的共享目录
 
-```text
-/path/to/meme_dir
-├── meme1/
-│   └── __init__.py
-└── meme2/
-    └── __init__.py
+仓库里只保留 `data/example-config.json`
+
+其余目录都是运行时文件，不纳入版本控制
+
+## 与 `meme-generator` 联动
+
+`meme-generator` 读取的是 `meme_dirs`
+
+对于这个项目，推荐固定成：
+
+```json
+["/data/managed/memes"]
 ```
 
-参考项目：
+也就是说，`meme-generator` 不直接读取每个扩展仓库，而是只读 `MemeManager UI` 汇总后的共享目录
 
-- `meme-generator-contrib` 的根目录是 `memes`
-- `meme-generator-jj` 的默认分支是 `master`，根目录是 `memes`
-- `tudou-meme` 的根目录是 `meme`
-- `meme_emoji`、`crazy_emoji`、`xiaoruan-meme` 的根目录是 `emoji`
-
-`MemeManager UI` 会做三件事：
-
-1. `git clone/pull` 仓库到共享卷
-2. 自动识别真实的 meme 根目录，必要时支持手动覆盖
-3. 把所有启用仓库下的 meme 子目录链接到一个固定目录
-
-默认仓库配置放在 `data/example-config.json`
-
-- 首次启动时，会用这个文件初始化 `data/config/repos.json` 和 `data/state/repos-state.json`
-- 这些仓库初始都是“未同步”状态
-- 你可以直接改 `data/example-config.json`，不需要改代码
-
-当前持久化拆成两层：
-
-- `data/config/repos.json`：仓库配置，包含 URL、分支、启停、手动指定的 `meme root`
-- `data/state/repos-state.json`：运行状态，包含同步中、删除中、最近 commit、最近错误、最近同步时间
-
-这样前端只负责发起 API 请求，真正的同步/删除在后台任务里执行，不会把页面请求卡死。
-
-这样仓库先只是配置项，不会立刻拉代码，也不会增加共享卷体积。只有你点同步后，才会真正 clone/pull。
-
-这样 `meme-generator` 只需要固定读取一个目录，不用每加一个仓库就改一次 `MEME_DIRS`
-
-## Docker Compose
-
-推荐把两个容器挂到同一个卷，比如 `/data`
+## Docker Compose 示例
 
 ```yaml
 services:
@@ -90,7 +102,7 @@ services:
       - meme-data:/data
 
   meme-manager-ui:
-    image: ghcr.io/your-name/mememanager-ui:latest
+    image: ghcr.io/ziyi233/mememanager-ui:latest
     ports:
       - "3000:3000"
     environment:
@@ -102,26 +114,35 @@ volumes:
   meme-data:
 ```
 
-注意：
+## Docker 镜像
 
-- `meme-generator` 当前是在启动时加载 memes，不是热重载
-- 所以新增或更新额外仓库后，现阶段通常还需要重启 `meme-generator` 容器才能生效
+项目自带多阶段 `Dockerfile`，运行方式是 Next standalone
 
-## 镜像发布
+默认环境变量：
 
-- 项目已提供 `D:\MemeManager-UI\.github\workflows\docker.yml:1`
-- 推送到默认分支时，会自动构建并发布 `linux/amd64` 和 `linux/arm64` 镜像到 `GHCR`
-- 推送 `v*` 标签时，会额外发布对应版本标签
-- 默认镜像名是 `ghcr.io/<owner>/<repo>`
+- `PORT=3000`
+- `HOSTNAME=0.0.0.0`
+- `DATA_ROOT=/data`
 
-首次启用前要确认：
+## GitHub Actions
 
-- GitHub 仓库已创建并推送
-- 仓库 `Actions` 和 `Packages` 权限正常
-- 包可见性按需设为 public
+仓库内置工作流：`.github/workflows/docker.yml`
 
-## 当前进度
+行为如下：
 
-- 已完成基础脚手架
-- 已完成真实仓库管理、同步和共享目录生成
-- 下一步接入更细的错误展示和镜像自动构建
+- 推送到 `main` 时，自动构建并发布镜像
+- 推送 `v*` 标签时，额外发布对应版本标签
+- 发布到 `GHCR`
+- 默认构建平台：`linux/amd64`、`linux/arm64`
+
+默认镜像名：
+
+```text
+ghcr.io/<owner>/<repo>
+```
+
+## 当前限制
+
+- `meme-generator` 本身通常需要重启后才会重新加载新增表情
+- 某些第三方仓库之间可能出现表情目录重名冲突
+- 网络不稳定时，`git clone` 仍可能失败，但失败目录会自动清理，下一次可以直接重试
