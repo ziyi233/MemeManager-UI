@@ -25,9 +25,8 @@ RUN apk add --no-cache git openssh-client
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/dist-server ./dist-server
 COPY --from=builder /app/data/example-config.json ./data/example-config.json
-COPY --from=builder /app/server ./server
-COPY --from=builder /app/src/lib ./src/lib
 RUN mkdir -p public
 
 EXPOSE 3000

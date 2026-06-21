@@ -360,62 +360,89 @@ export function RepoDashboard({
         </section>
       ) : null}
 
-      <section className="grid gap-8 py-8 lg:grid-cols-[minmax(280px,360px)_minmax(0,1fr)]">
-        <section id="content" className="h-fit rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] p-5" style={{ scrollMarginTop: 24 }}>
-          <h2 className="text-[16px] font-medium">添加仓库</h2>
-          <form
-            className="mt-4 grid gap-4"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void handleAddRepository(new FormData(event.currentTarget))
-              event.currentTarget.reset()
-            }}
-          >
-            <label className="grid gap-2 text-[13px] font-medium text-[var(--foreground-muted)]">
-              仓库地址
-              <input name="repositoryUrl" type="url" inputMode="url" autoComplete="off" placeholder="https://github.com/example/memes.git" className="h-10 rounded-md border border-[var(--border)] bg-white px-3 text-[14px] text-[var(--foreground)] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--accent)]" />
-            </label>
-
-            <label className="grid gap-2 text-[13px] font-medium text-[var(--foreground-muted)]">
-              分支
-              <input name="branch" type="text" autoComplete="off" placeholder="main" className="h-10 rounded-md border border-[var(--border)] bg-white px-3 text-[14px] text-[var(--foreground)] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--accent)]" />
-            </label>
-
-            <label className="grid gap-2 text-[13px] font-medium text-[var(--foreground-muted)]">
-              表情根目录
-              <input name="customMemeRoot" type="text" autoComplete="off" placeholder="留空时自动识别，如 memes / meme / emoji" className="h-10 rounded-md border border-[var(--border)] bg-white px-3 text-[14px] text-[var(--foreground)] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--accent)]" />
-            </label>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--foreground)] px-3 text-[14px] font-medium text-white transition-colors hover:bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+      <section className="grid gap-8 py-8 xl:grid-cols-[minmax(280px,320px)_minmax(0,1fr)]">
+        <section className="grid h-fit min-w-0 gap-5">
+          <section id="content" className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] p-5" style={{ scrollMarginTop: 24 }}>
+            <h2 className="text-[16px] font-medium">添加仓库</h2>
+            <form
+              className="mt-4 grid gap-4"
+              onSubmit={(event) => {
+                event.preventDefault()
+                void handleAddRepository(new FormData(event.currentTarget))
+                event.currentTarget.reset()
+              }}
             >
-              <Plus aria-hidden="true" className="mr-2 size-4" />
-              {isSubmitting ? "添加中..." : "添加为未同步仓库"}
-            </button>
-          </form>
+              <label className="grid gap-2 text-[13px] font-medium text-[var(--foreground-muted)]">
+                仓库地址
+                <input name="repositoryUrl" type="url" inputMode="url" autoComplete="off" placeholder="https://github.com/example/memes.git" className="h-10 rounded-md border border-[var(--border)] bg-white px-3 text-[14px] text-[var(--foreground)] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--accent)]" />
+              </label>
 
-          <div className="mt-6 border-t border-[var(--border)] pt-4 text-[13px] leading-5 text-[var(--foreground-muted)]">
-            <p>未同步仓库只保存配置，不会立刻拉代码</p>
-            <p className="mt-2">同步成功后，启用中的仓库会自动汇总到共享目录</p>
-            <p className="mt-2">当前统计：{data.summary.totalMemeCount} 个表情，{data.summary.linkedMemeCount} 个已共享，{data.summary.conflictCount} 处冲突</p>
-            <p className="mt-2">
-              {data.summary.repoUrlPrefixConfigured
-                ? "当前已配置仓库拉取源前缀，同步时会优先走镜像源"
-                : "当前直接从仓库原始地址拉取，网络差时可以配置仓库拉取源前缀"}
-            </p>
-            <p className="mt-2">
-              {data.summary.reloadConfigured
-                ? data.summary.autoReloadEnabled
-                  ? "已配置自动重载，同步成功后会调用 Meme API 的 reload 接口"
-                  : "已配置手动重载，可以在右上角点击按钮调用 Meme API 的 reload 接口"
-                : "还未配置 Meme API 重载方式，新增表情后需要你手动触发 meme-generator 的 /memes/reload"}
-            </p>
-          </div>
+              <label className="grid gap-2 text-[13px] font-medium text-[var(--foreground-muted)]">
+                分支
+                <input name="branch" type="text" autoComplete="off" placeholder="main" className="h-10 rounded-md border border-[var(--border)] bg-white px-3 text-[14px] text-[var(--foreground)] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--accent)]" />
+              </label>
+
+              <label className="grid gap-2 text-[13px] font-medium text-[var(--foreground-muted)]">
+                表情根目录
+                <input name="customMemeRoot" type="text" autoComplete="off" placeholder="留空时自动识别，如 memes / meme / emoji" className="h-10 rounded-md border border-[var(--border)] bg-white px-3 text-[14px] text-[var(--foreground)] outline-none transition-shadow focus-visible:ring-2 focus-visible:ring-[var(--accent)]" />
+              </label>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="inline-flex h-10 items-center justify-center rounded-md bg-[var(--foreground)] px-3 text-[14px] font-medium text-white transition-colors hover:bg-black focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus aria-hidden="true" className="mr-2 size-4" />
+                {isSubmitting ? "添加中..." : "添加为未同步仓库"}
+              </button>
+            </form>
+
+            <div className="mt-6 border-t border-[var(--border)] pt-4 text-[13px] leading-5 text-[var(--foreground-muted)]">
+              <p>未同步仓库只保存配置，不会立刻拉代码</p>
+              <p className="mt-2">同步成功后，启用中的仓库会自动汇总到共享目录</p>
+              <p className="mt-2">当前统计：{data.summary.totalMemeCount} 个表情，{data.summary.linkedMemeCount} 个已共享，{data.summary.conflictCount} 处冲突</p>
+              <p className="mt-2">
+                {data.summary.repoUrlPrefixConfigured
+                  ? "当前已配置仓库拉取源前缀，同步时会优先走镜像源"
+                  : "当前直接从仓库原始地址拉取，网络差时可以配置仓库拉取源前缀"}
+              </p>
+              <p className="mt-2">
+                {data.summary.reloadConfigured
+                  ? data.summary.autoReloadEnabled
+                    ? "已配置自动重载，同步成功后会调用 Meme API 的 reload 接口"
+                    : "已配置手动重载，可以在右上角点击按钮调用 Meme API 的 reload 接口"
+                  : "还未配置 Meme API 重载方式，新增表情后需要你手动触发 meme-generator 的 /memes/reload"}
+              </p>
+            </div>
+          </section>
+
+          <section className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] p-5">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <h2 className="text-[16px] font-medium">最近任务</h2>
+              <span className="text-[12px] text-[var(--foreground-muted)]">{data.jobs.length} 条</span>
+            </div>
+
+            <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+              {data.jobs.length ? data.jobs.map((job) => (
+                <button
+                  key={job.id}
+                  type="button"
+                  onClick={() => setSelectedJobId(job.id)}
+                  className={`w-full rounded-md border px-3 py-3 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
+                >
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] font-medium">{formatJobType(job.type)}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClassName[getJobTone(job.status)]}`}>{getJobStatusLabel(job.status)}</span>
+                  </div>
+                  <p className="mt-2 truncate text-[12px] text-[var(--foreground-muted)]">{job.repoName || "全局任务"}</p>
+                  <p className="mt-1 truncate text-[12px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
+                </button>
+              )) : <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>}
+            </div>
+          </section>
         </section>
 
-        <section>
+        <section className="min-w-0">
           <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
             <h2 className="text-[16px] font-medium">仓库列表</h2>
             <span className="text-[13px] text-[var(--foreground-muted)]">
@@ -431,7 +458,7 @@ export function RepoDashboard({
               const conflicts = repo.conflicts || []
 
               return (
-                <article key={repo.id} className="grid gap-4 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <article key={repo.id} className="grid min-w-0 gap-4 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
                       <h3 className="text-[14px] font-medium">{repo.name}</h3>
@@ -439,8 +466,8 @@ export function RepoDashboard({
                       {!repo.enabled ? <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-[12px] text-[var(--foreground-muted)]">已停用</span> : null}
                     </div>
 
-                    <div className="mt-2 flex items-center gap-2 text-[13px] text-[var(--foreground-muted)]">
-                      <GitBranch aria-hidden="true" className="size-4" />
+                    <div className="mt-2 flex min-w-0 items-center gap-2 text-[13px] text-[var(--foreground-muted)]">
+                      <GitBranch aria-hidden="true" className="size-4 shrink-0" />
                       <code translate="no" className="min-w-0 truncate font-mono text-[13px]">{repo.url}</code>
                     </div>
 
@@ -483,7 +510,7 @@ export function RepoDashboard({
                     </form>
                   </div>
 
-                  <div className="flex flex-wrap gap-2 md:justify-end">
+                  <div className="flex shrink-0 flex-wrap gap-2 md:justify-end">
                     <button type="button" onClick={() => void handleSync(repo.id)} disabled={busy} className="inline-flex h-8 items-center rounded-md border border-[var(--border)] bg-white px-3 text-[14px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
                       {repo.status === "syncing" || localPending === "syncing" ? "同步中..." : "同步"}
                     </button>
@@ -502,43 +529,23 @@ export function RepoDashboard({
 
           <section className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] p-5">
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
-              <h2 className="text-[16px] font-medium">最近任务</h2>
-              <span className="text-[13px] text-[var(--foreground-muted)]">显示最近 {data.jobs.length} 条</span>
+              <h2 className="text-[16px] font-medium">任务输出</h2>
+              {selectedJob ? <span className="text-[13px] text-[var(--foreground-muted)]">{selectedJob.repoName || "全局任务"}</span> : null}
             </div>
 
-            <div className="grid gap-4 pt-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-              <div className="space-y-2">
-                {data.jobs.map((job) => (
-                  <button
-                    key={job.id}
-                    type="button"
-                    onClick={() => setSelectedJobId(job.id)}
-                    className={`w-full rounded-md border px-3 py-3 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
-                  >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[13px] font-medium">{formatJobType(job.type)}</span>
-                      <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClassName[getJobTone(job.status)]}`}>{getJobStatusLabel(job.status)}</span>
-                    </div>
-                    <p className="mt-2 truncate text-[12px] text-[var(--foreground-muted)]">{job.repoName || "全局任务"}</p>
-                    <p className="mt-1 truncate text-[12px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
-                  </button>
-                ))}
-              </div>
-
-              <div className="rounded-md border border-[var(--border)] bg-white p-4">
-                {selectedJob ? (
-                  <>
-                    <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] pb-3">
-                      <span className="text-[14px] font-medium">{formatJobType(selectedJob.type)}</span>
-                      <span className={`rounded-full border px-2.5 py-1 text-[12px] ${statusClassName[getJobTone(selectedJob.status)]}`}>{getJobStatusLabel(selectedJob.status)}</span>
-                      {selectedJob.repoName ? <span className="text-[13px] text-[var(--foreground-muted)]">{selectedJob.repoName}</span> : null}
-                    </div>
-                    <pre className="mt-4 h-[320px] overflow-auto rounded-md border border-[var(--border)] bg-[#0b1020] p-4 font-mono text-[12px] leading-5 text-[#d7e0ff] whitespace-pre-wrap">{selectedJob.logs.length ? selectedJob.logs.map((log) => formatLog(log)).join("\n") : "等待日志输出..."}</pre>
-                  </>
-                ) : (
-                  <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>
-                )}
-              </div>
+            <div className="rounded-md border border-[var(--border)] bg-white p-4 mt-4">
+              {selectedJob ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] pb-3">
+                    <span className="text-[14px] font-medium">{formatJobType(selectedJob.type)}</span>
+                    <span className={`rounded-full border px-2.5 py-1 text-[12px] ${statusClassName[getJobTone(selectedJob.status)]}`}>{getJobStatusLabel(selectedJob.status)}</span>
+                    <span className="text-[13px] text-[var(--foreground-muted)]">{selectedJob.message || "无任务说明"}</span>
+                  </div>
+                  <pre className="mt-4 h-[360px] overflow-auto rounded-md border border-[var(--border)] bg-[#0b1020] p-4 font-mono text-[12px] leading-5 text-[#d7e0ff] whitespace-pre-wrap">{selectedJob.logs.length ? selectedJob.logs.map((log) => formatLog(log)).join("\n") : "等待日志输出..."}</pre>
+                </>
+              ) : (
+                <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>
+              )}
             </div>
           </section>
         </section>
