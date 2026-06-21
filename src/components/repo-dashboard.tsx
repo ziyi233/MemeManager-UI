@@ -360,8 +360,8 @@ export function RepoDashboard({
         </section>
       ) : null}
 
-      <section className="grid gap-8 py-8 xl:grid-cols-[300px_minmax(0,1fr)]">
-        <section className="grid h-fit min-w-0 gap-5 xl:sticky xl:top-6">
+      <section className="grid gap-8 py-8 xl:grid-cols-[360px_minmax(0,1fr)]">
+        <section className="grid h-fit min-w-0 gap-5">
           <section id="content" className="min-w-0 rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] p-5" style={{ scrollMarginTop: 24 }}>
             <h2 className="text-[16px] font-medium">添加仓库</h2>
             <form
@@ -422,13 +422,13 @@ export function RepoDashboard({
               <span className="text-[12px] text-[var(--foreground-muted)]">{data.jobs.length} 条</span>
             </div>
 
-            <div className="mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
+            <div className="mt-3 flex gap-2 overflow-x-auto pb-2">
               {data.jobs.length ? data.jobs.map((job) => (
                 <button
                   key={job.id}
                   type="button"
                   onClick={() => setSelectedJobId(job.id)}
-                  className={`w-full rounded-md border px-3 py-3 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
+                  className={`min-w-[220px] rounded-md border px-3 py-3 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
                 >
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[13px] font-medium">{formatJobType(job.type)}</span>
@@ -439,11 +439,24 @@ export function RepoDashboard({
                 </button>
               )) : <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>}
             </div>
+
+            <div className="mt-3 rounded-md border border-[var(--border)] bg-white p-3">
+              {selectedJob ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border)] pb-2">
+                    <span className="text-[13px] font-medium">{formatJobType(selectedJob.type)}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClassName[getJobTone(selectedJob.status)]}`}>{getJobStatusLabel(selectedJob.status)}</span>
+                  </div>
+                  <pre className="mt-3 h-[300px] overflow-auto rounded-md border border-[var(--border)] bg-[#0b1020] p-3 font-mono text-[12px] leading-5 text-[#d7e0ff] whitespace-pre-wrap">{selectedJob.logs.length ? selectedJob.logs.map((log) => formatLog(log)).join("\n") : "等待日志输出..."}</pre>
+                </>
+              ) : (
+                <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>
+              )}
+            </div>
           </section>
         </section>
 
-        <section className="min-w-0 min-[1440px]:grid min-[1440px]:grid-cols-[minmax(0,1fr)_420px] min-[1440px]:items-start min-[1440px]:gap-6">
-          <section className="min-w-0">
+        <section className="min-w-0">
           <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
             <h2 className="text-[16px] font-medium">仓库列表</h2>
             <span className="text-[13px] text-[var(--foreground-muted)]">
@@ -528,29 +541,6 @@ export function RepoDashboard({
             })}
           </div>
 
-          </section>
-
-          <section className="mt-8 rounded-xl border border-[var(--border)] bg-[var(--background-subtle)] p-5 min-[1440px]:sticky min-[1440px]:top-6 min-[1440px]:mt-0">
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
-              <h2 className="text-[16px] font-medium">任务输出</h2>
-              {selectedJob ? <span className="text-[13px] text-[var(--foreground-muted)]">{selectedJob.repoName || "全局任务"}</span> : null}
-            </div>
-
-            <div className="rounded-md border border-[var(--border)] bg-white p-4 mt-4">
-              {selectedJob ? (
-                <>
-                  <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] pb-3">
-                    <span className="text-[14px] font-medium">{formatJobType(selectedJob.type)}</span>
-                    <span className={`rounded-full border px-2.5 py-1 text-[12px] ${statusClassName[getJobTone(selectedJob.status)]}`}>{getJobStatusLabel(selectedJob.status)}</span>
-                    <span className="text-[13px] text-[var(--foreground-muted)]">{selectedJob.message || "无任务说明"}</span>
-                  </div>
-                  <pre className="mt-4 h-[360px] overflow-auto rounded-md border border-[var(--border)] bg-[#0b1020] p-4 font-mono text-[12px] leading-5 text-[#d7e0ff] whitespace-pre-wrap min-[1440px]:h-[calc(100vh-240px)] min-[1440px]:max-h-[620px]">{selectedJob.logs.length ? selectedJob.logs.map((log) => formatLog(log)).join("\n") : "等待日志输出..."}</pre>
-                </>
-              ) : (
-                <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>
-              )}
-            </div>
-          </section>
         </section>
       </section>
     </>
