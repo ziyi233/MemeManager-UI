@@ -123,6 +123,20 @@ http://meme-generator:2233/memes/reload
 
 ## Docker Compose 示例
 
+项目根目录已经附带可直接使用的 `docker-compose.yml`
+
+启动：
+
+```bash
+docker compose up -d
+```
+
+停止：
+
+```bash
+docker compose down
+```
+
 ```yaml
 services:
   meme-generator:

@@ -1,0 +1,39 @@
+services:
+  meme-generator:
+    image: ghcr.io/memecrafters/meme-generator:latest
+    container_name: meme-generator
+    ports:
+      - "2233:2233"
+    environment:
+      MEME_DIRS: '["/data/managed/memes"]'
+      LOAD_BUILTIN_MEMES: "true"
+      MEME_DISABLED_LIST: "[]"
+      LOG_LEVEL: INFO
+    volumes:
+      - meme-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:2233/meme/version', timeout=5)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  meme-manager-ui:
+    image: ghcr.io/ziyi233/mememanager-ui:latest
+    container_name: meme-manager-ui
+    depends_on:
+      meme-generator:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATA_ROOT: /data
+      MEME_API_RELOAD_URL: http://meme-generator:2233/memes/reload
+      MEME_API_AUTO_RELOAD: "false"
+    volumes:
+      - meme-data:/data
+    restart: unless-stopped
+
+volumes:
+  meme-data:
