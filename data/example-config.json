@@ -1,0 +1,28 @@
+{
+  "repos": [
+    {
+      "url": "https://github.com/MemeCrafters/meme-generator-contrib",
+      "branch": "main"
+    },
+    {
+      "url": "https://github.com/anyliew/meme_emoji",
+      "branch": "main"
+    },
+    {
+      "url": "https://github.com/jinjiao007/meme-generator-jj",
+      "branch": "master"
+    },
+    {
+      "url": "https://github.com/anyliew/crazy_emoji",
+      "branch": "main"
+    },
+    {
+      "url": "https://github.com/LRZ9712/tudou-meme",
+      "branch": "main"
+    },
+    {
+      "url": "https://github.com/xiaoruange39/xiaoruan-meme",
+      "branch": "main"
+    }
+  ]
+}
