@@ -76,6 +76,32 @@ npm run dev
 
 其余目录都是运行时文件，不纳入版本控制
 
+## 仓库拉取源
+
+仓库配置里保存的始终是原始地址，比如 `https://github.com/owner/repo`
+
+如果你的网络环境直连 GitHub 不稳定，可以配置环境变量：
+
+```text
+MEME_REPO_URL_PREFIX=
+```
+
+它的行为很直接：同步时把这个前缀拼到原始 URL 前面再执行 `git clone/fetch/pull`
+
+例如：
+
+```text
+MEME_REPO_URL_PREFIX=https://ghfast.top/
+```
+
+那么实际拉取时会变成：
+
+```text
+https://ghfast.top/https://github.com/anyliew/meme_emoji
+```
+
+这样可以在不修改仓库配置的前提下切换镜像源
+
 ## 与 `meme-generator` 联动
 
 `meme-generator` 读取的是 `meme_dirs`

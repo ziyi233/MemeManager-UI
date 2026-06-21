@@ -118,6 +118,10 @@ function getReloadUrl() {
   return process.env.MEME_API_RELOAD_URL?.trim() || ""
 }
 
+function getRepoUrlPrefix() {
+  return process.env.MEME_REPO_URL_PREFIX?.trim() || ""
+}
+
 function getReloadCommand() {
   return process.env.MEME_API_RELOAD_COMMAND?.trim() || ""
 }
@@ -133,6 +137,15 @@ function isAutoReloadEnabled() {
 function normalizeRepoName(url: string) {
   const repoName = url.split("/").filter(Boolean).pop() || "repo"
   return repoName.replace(/\.git$/i, "")
+}
+
+function resolveRepoGitUrl(url: string) {
+  const prefix = getRepoUrlPrefix()
+  if (!prefix) {
+    return url
+  }
+
+  return `${prefix}${url}`
 }
 
 function slugify(value: string) {
@@ -565,10 +578,12 @@ async function rebuildManagedMemes() {
 
 async function performSync(repo: RepoConfig): Promise<SyncResult> {
   const repoDir = getRepoDirectory(repo.id)
+  const remoteUrl = resolveRepoGitUrl(repo.url)
   let beforeHash: string | null = null
 
   if (await isGitRepository(repoDir)) {
     beforeHash = await readGitOutput(["rev-parse", "--short", "HEAD"], repoDir)
+    await runGit(["remote", "set-url", "origin", remoteUrl], repoDir)
     await runGit(["fetch", "origin", repo.branch], repoDir)
     await runGit(["checkout", repo.branch], repoDir)
     await runGit(["pull", "--ff-only", "origin", repo.branch], repoDir)
@@ -578,7 +593,7 @@ async function performSync(repo: RepoConfig): Promise<SyncResult> {
     }
 
     try {
-      await runGit(["clone", "--branch", repo.branch, "--single-branch", repo.url, repoDir])
+      await runGit(["clone", "--branch", repo.branch, "--single-branch", remoteUrl, repoDir])
     } catch (error) {
       await fs.rm(repoDir, { recursive: true, force: true })
       throw error
@@ -622,6 +637,7 @@ export async function getManagerSummary() {
     dataRoot: getDataRoot(),
     managedMemesDir: getManagedMemesDir(),
     memeGeneratorMemeDirsEnv: JSON.stringify([getManagedMemesDir()]),
+    repoUrlPrefixConfigured: Boolean(getRepoUrlPrefix()),
     reloadConfigured: isReloadConfigured(),
     autoReloadEnabled: isAutoReloadEnabled(),
   }

@@ -12,6 +12,7 @@ type DashboardData = {
     dataRoot: string
     managedMemesDir: string
     memeGeneratorMemeDirsEnv: string
+    repoUrlPrefixConfigured: boolean
     reloadConfigured: boolean
     autoReloadEnabled: boolean
   }
@@ -313,6 +314,11 @@ export function RepoDashboard({
           <div className="mt-6 border-t border-[var(--border)] pt-4 text-[13px] leading-5 text-[var(--foreground-muted)]">
             <p>未同步仓库只保存配置，不会立刻拉代码</p>
             <p className="mt-2">同步成功后，启用中的仓库会自动汇总到共享目录</p>
+            <p className="mt-2">
+              {data.summary.repoUrlPrefixConfigured
+                ? "当前已配置仓库拉取源前缀，同步时会优先走镜像源"
+                : "当前直接从仓库原始地址拉取，网络差时可以配置仓库拉取源前缀"}
+            </p>
             <p className="mt-2">
               {data.summary.reloadConfigured
                 ? data.summary.autoReloadEnabled
