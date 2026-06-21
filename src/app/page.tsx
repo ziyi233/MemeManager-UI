@@ -1,5 +1,20 @@
 import { RepoDashboard } from "@/components/repo-dashboard"
 import { serverFetch } from "@/lib/server-api"
+import type { Job, ManagedRepo } from "@/lib/meme-manager"
+
+type DashboardData = {
+  repos: ManagedRepo[]
+  jobs: Job[]
+  summary: {
+    count: number
+    dataRoot: string
+    managedMemesDir: string
+    memeGeneratorMemeDirsEnv: string
+    repoUrlPrefixConfigured: boolean
+    reloadConfigured: boolean
+    autoReloadEnabled: boolean
+  }
+}
 
 export const dynamic = "force-dynamic"
 
@@ -8,7 +23,7 @@ export default async function Home({
   searchParams?: Promise<Record<string, string | string[] | undefined>>
 }) {
   const { data } = await serverFetch("/repos")
-  const dashboardData = data as Parameters<typeof RepoDashboard>[0]["initialData"]
+  const dashboardData = data as DashboardData
 
   return (
     <main className="min-h-screen bg-[var(--background)] text-[var(--foreground)]">

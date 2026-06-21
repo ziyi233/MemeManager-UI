@@ -1,10 +1,12 @@
-import { exec, execFile } from "node:child_process"
+import { exec, execFile, spawn } from "node:child_process"
+import { EventEmitter } from "node:events"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
 
 const execFileAsync = promisify(execFile)
 const execAsync = promisify(exec)
+const jobEventBus = new EventEmitter()
 
 export type RepoStatus = "unsynced" | "syncing" | "ready" | "error" | "deleting"
 
@@ -54,6 +56,12 @@ export type Job = {
   message: string | null
   error: string | null
   logs: RepoLogEntry[]
+}
+
+export type JobEvent = {
+  type: "job_created" | "job_updated" | "job_log"
+  job: Job
+  log?: RepoLogEntry
 }
 
 type SyncTaskResult = SyncResult & {
@@ -531,6 +539,10 @@ async function createJob(input: Pick<Job, "type" | "repoId" | "repoName" | "mess
   jobStore.jobs.unshift(job)
   jobStore.jobs = jobStore.jobs.slice(0, 100)
   await writeJobStore(jobStore)
+  jobEventBus.emit("job", {
+    type: "job_created",
+    job,
+  } satisfies JobEvent)
   if (job.repoId) {
     await saveStatePatch(job.repoId, { lastJobId: job.id })
   }
@@ -549,6 +561,10 @@ async function updateJob(jobId: string, patch: Partial<Job>) {
     id: jobStore.jobs[index].id,
   })
   await writeJobStore(jobStore)
+  jobEventBus.emit("job", {
+    type: "job_updated",
+    job: jobStore.jobs[index],
+  } satisfies JobEvent)
 }
 
 async function appendJobLog(jobId: string, level: "info" | "error", message: string) {
@@ -569,6 +585,11 @@ async function appendJobLog(jobId: string, level: "info" | "error", message: str
     logs: [...job.logs, entry].slice(-100),
   })
   await writeJobStore(jobStore)
+  jobEventBus.emit("job", {
+    type: "job_log",
+    job: jobStore.jobs[index],
+    log: entry,
+  } satisfies JobEvent)
   if (job.repoId) {
     await pushRepoLog(job.repoId, level, message)
   }
@@ -605,6 +626,68 @@ async function runGit(args: string[], cwd?: string) {
     stdout: result.stdout.trim(),
     stderr: result.stderr.trim(),
   }
+}
+
+async function runGitStream(
+  args: string[],
+  cwd: string | undefined,
+  onLine: (line: string, level: "info" | "error") => Promise<void>,
+) {
+  await onLine(`$ git ${args.join(" ")}`, "info")
+
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn("git", args, {
+      cwd,
+      windowsHide: true,
+    })
+
+    let stdoutBuffer = ""
+    let stderrBuffer = ""
+
+    const flushBuffer = async (buffer: string, level: "info" | "error") => {
+      const normalized = buffer.replace(/\r/g, "")
+      const lines = normalized.split("\n")
+      const tail = lines.pop() || ""
+      for (const line of lines) {
+        const trimmed = line.trim()
+        if (trimmed) {
+          void onLine(trimmed, level)
+        }
+      }
+      return tail
+    }
+
+    child.stdout.on("data", (chunk: Buffer | string) => {
+      stdoutBuffer += chunk.toString()
+      void flushBuffer(stdoutBuffer, "info").then((tail) => {
+        stdoutBuffer = tail
+      })
+    })
+
+    child.stderr.on("data", (chunk: Buffer | string) => {
+      stderrBuffer += chunk.toString()
+      void flushBuffer(stderrBuffer, "error").then((tail) => {
+        stderrBuffer = tail
+      })
+    })
+
+    child.on("error", reject)
+    child.on("close", async (code) => {
+      if (stdoutBuffer.trim()) {
+        await onLine(stdoutBuffer.trim(), "info")
+      }
+      if (stderrBuffer.trim()) {
+        await onLine(stderrBuffer.trim(), "error")
+      }
+
+      if (code === 0) {
+        resolve()
+        return
+      }
+
+      reject(new Error(`git ${args[0]} 失败，退出码 ${code}`))
+    })
+  })
 }
 
 async function readGitOutput(args: string[], cwd?: string) {
@@ -779,16 +862,27 @@ async function performSync(repo: RepoConfig, jobId?: string): Promise<SyncTaskRe
     }
   }
 
+  async function streamGit(args: string[], cwd?: string) {
+    if (!jobId) {
+      await runGit(args, cwd)
+      return
+    }
+
+    await runGitStream(args, cwd, async (line, level) => {
+      await appendJobLog(jobId, level, line)
+    })
+  }
+
   if (await isGitRepository(repoDir)) {
     await log(`更新远端地址为 ${remoteUrl}`)
     beforeHash = await readGitOutput(["rev-parse", "--short", "HEAD"], repoDir)
-    await runGit(["remote", "set-url", "origin", remoteUrl], repoDir)
+    await streamGit(["remote", "set-url", "origin", remoteUrl], repoDir)
     await log(`抓取分支 ${repo.branch}`)
-    await runGit(["fetch", "origin", repo.branch], repoDir)
+    await streamGit(["fetch", "origin", repo.branch], repoDir)
     await log(`切换到分支 ${repo.branch}`)
-    await runGit(["checkout", repo.branch], repoDir)
+    await streamGit(["checkout", repo.branch], repoDir)
     await log(`拉取最新提交 ${repo.branch}`)
-    await runGit(["pull", "--ff-only", "origin", repo.branch], repoDir)
+    await streamGit(["pull", "--ff-only", "origin", repo.branch], repoDir)
   } else {
     if (await pathExists(repoDir)) {
       await log("检测到残留目录，先清理后重新拉取")
@@ -797,7 +891,7 @@ async function performSync(repo: RepoConfig, jobId?: string): Promise<SyncTaskRe
 
     try {
       await log(`克隆仓库 ${remoteUrl}`)
-      await runGit(["clone", "--branch", repo.branch, "--single-branch", remoteUrl, repoDir])
+      await streamGit(["clone", "--branch", repo.branch, "--single-branch", remoteUrl, repoDir])
     } catch (error) {
       await fs.rm(repoDir, { recursive: true, force: true })
       throw error
@@ -1111,6 +1205,17 @@ export async function reloadMemeApi() {
   } catch (error) {
     await finishJob(job.id, "failed", "Meme API 重载失败", formatError(error))
     throw error
+  }
+}
+
+export async function listJobs() {
+  return (await readJobStore()).jobs.slice(0, 100)
+}
+
+export function subscribeJobEvents(listener: (event: JobEvent) => void) {
+  jobEventBus.on("job", listener)
+  return () => {
+    jobEventBus.off("job", listener)
   }
 }
 

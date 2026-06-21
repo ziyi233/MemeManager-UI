@@ -4,11 +4,13 @@ import cors from "@fastify/cors"
 import {
   addRepo,
   getDashboardData,
+  listJobs,
   reloadMemeApi,
   requestRemoveRepo,
   requestRepoSync,
   requestSyncAllRepos,
   setRepoEnabled,
+  subscribeJobEvents,
   updateRepoMemeRoot,
 } from "../src/lib/meme-manager"
 
@@ -31,6 +33,36 @@ app.get("/health", async () => {
 
 app.get("/repos", async () => {
   return getDashboardData()
+})
+
+app.get("/jobs", async () => {
+  return { jobs: await listJobs() }
+})
+
+app.get("/events", async (_request, reply) => {
+  reply.raw.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  })
+
+  reply.raw.write(`event: ready\ndata: ${JSON.stringify({ ok: true })}\n\n`)
+
+  const unsubscribe = subscribeJobEvents((event) => {
+    reply.raw.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`)
+  })
+
+  const heartbeat = setInterval(() => {
+    reply.raw.write("event: ping\ndata: {}\n\n")
+  }, 15000)
+
+  reply.raw.on("close", () => {
+    clearInterval(heartbeat)
+    unsubscribe()
+    reply.raw.end()
+  })
+
+  return reply.hijack()
 })
 
 app.post("/repos", async (request, reply) => {

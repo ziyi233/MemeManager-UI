@@ -131,6 +131,7 @@ export function RepoDashboard({
   const [flash, setFlash] = useState<FlashMessage>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pendingRepoIds, setPendingRepoIds] = useState<Record<string, "syncing" | "deleting" | "saving" | "toggling">>({})
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(initialData.jobs[0]?.id || null)
 
   useEffect(() => {
     let cancelled = false
@@ -158,7 +159,38 @@ export function RepoDashboard({
     }
   }, [])
 
+  useEffect(() => {
+    const eventSource = new EventSource("/api/events")
+
+    function handleJobEvent(event: MessageEvent<string>) {
+      const payload = JSON.parse(event.data) as { job: Job }
+      setData((current) => {
+        const nextJobs = [...current.jobs]
+        const index = nextJobs.findIndex((job) => job.id === payload.job.id)
+        if (index === -1) {
+          nextJobs.unshift(payload.job)
+        } else {
+          nextJobs[index] = payload.job
+        }
+        return {
+          ...current,
+          jobs: nextJobs.slice(0, 30),
+        }
+      })
+      setSelectedJobId((current) => current || payload.job.id)
+    }
+
+    eventSource.addEventListener("job_created", (event) => handleJobEvent(event as MessageEvent<string>))
+    eventSource.addEventListener("job_updated", (event) => handleJobEvent(event as MessageEvent<string>))
+    eventSource.addEventListener("job_log", (event) => handleJobEvent(event as MessageEvent<string>))
+
+    return () => {
+      eventSource.close()
+    }
+  }, [])
+
   const repoCount = useMemo(() => data.repos.length, [data.repos.length])
+  const selectedJob = data.jobs.find((job) => job.id === selectedJobId) || data.jobs[0] || null
 
   function setPending(repoId: string, value?: "syncing" | "deleting" | "saving" | "toggling") {
     setPendingRepoIds((current) => {
@@ -432,20 +464,39 @@ export function RepoDashboard({
               <span className="text-[13px] text-[var(--foreground-muted)]">显示最近 {data.jobs.length} 条</span>
             </div>
 
-            <div className="divide-y divide-[var(--border)]">
-              {data.jobs.map((job) => (
-                <article key={job.id} className="py-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <span className="text-[14px] font-medium">{formatJobType(job.type)}</span>
-                    <span className={`rounded-full border px-2.5 py-1 text-[12px] ${statusClassName[getJobTone(job.status)]}`}>{getJobStatusLabel(job.status)}</span>
-                    {job.repoName ? <span className="text-[13px] text-[var(--foreground-muted)]">{job.repoName}</span> : null}
-                  </div>
-                  <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
-                  {job.logs.length ? (
-                    <pre className="mt-3 overflow-x-auto rounded-md border border-[var(--border)] bg-white p-3 text-[12px] leading-5 text-[var(--foreground)] whitespace-pre-wrap">{job.logs.slice(-8).map((log) => formatLog(log)).join("\n")}</pre>
-                  ) : null}
-                </article>
-              ))}
+            <div className="grid gap-4 pt-4 lg:grid-cols-[260px_minmax(0,1fr)]">
+              <div className="space-y-2">
+                {data.jobs.map((job) => (
+                  <button
+                    key={job.id}
+                    type="button"
+                    onClick={() => setSelectedJobId(job.id)}
+                    className={`w-full rounded-md border px-3 py-3 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[13px] font-medium">{formatJobType(job.type)}</span>
+                      <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClassName[getJobTone(job.status)]}`}>{getJobStatusLabel(job.status)}</span>
+                    </div>
+                    <p className="mt-2 truncate text-[12px] text-[var(--foreground-muted)]">{job.repoName || "全局任务"}</p>
+                    <p className="mt-1 truncate text-[12px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
+                  </button>
+                ))}
+              </div>
+
+              <div className="rounded-md border border-[var(--border)] bg-white p-4">
+                {selectedJob ? (
+                  <>
+                    <div className="flex flex-wrap items-center gap-3 border-b border-[var(--border)] pb-3">
+                      <span className="text-[14px] font-medium">{formatJobType(selectedJob.type)}</span>
+                      <span className={`rounded-full border px-2.5 py-1 text-[12px] ${statusClassName[getJobTone(selectedJob.status)]}`}>{getJobStatusLabel(selectedJob.status)}</span>
+                      {selectedJob.repoName ? <span className="text-[13px] text-[var(--foreground-muted)]">{selectedJob.repoName}</span> : null}
+                    </div>
+                    <pre className="mt-4 h-[320px] overflow-auto rounded-md border border-[var(--border)] bg-[#0b1020] p-4 font-mono text-[12px] leading-5 text-[#d7e0ff] whitespace-pre-wrap">{selectedJob.logs.length ? selectedJob.logs.map((log) => formatLog(log)).join("\n") : "等待日志输出..."}</pre>
+                  </>
+                ) : (
+                  <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>
+                )}
+              </div>
             </div>
           </section>
         </section>
