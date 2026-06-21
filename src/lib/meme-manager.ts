@@ -1,9 +1,10 @@
-import { execFile } from "node:child_process"
+import { exec, execFile } from "node:child_process"
 import { promises as fs } from "node:fs"
 import path from "node:path"
 import { promisify } from "node:util"
 
 const execFileAsync = promisify(execFile)
+const execAsync = promisify(exec)
 
 export type RepoStatus = "unsynced" | "syncing" | "ready" | "error" | "deleting"
 
@@ -54,6 +55,10 @@ type SyncResult = {
   memeRoot: string
 }
 
+type ReloadResult = {
+  mode: "url" | "command"
+}
+
 const MEME_ROOT_CANDIDATES = ["memes", "meme", "emoji"]
 
 const repoLocks = new Map<string, Promise<void>>()
@@ -99,6 +104,30 @@ function getManagedMemesDir() {
 
 function nowIso() {
   return new Date().toISOString()
+}
+
+function isTruthy(value?: string) {
+  if (!value) {
+    return false
+  }
+
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase())
+}
+
+function getReloadUrl() {
+  return process.env.MEME_API_RELOAD_URL?.trim() || ""
+}
+
+function getReloadCommand() {
+  return process.env.MEME_API_RELOAD_COMMAND?.trim() || ""
+}
+
+function isReloadConfigured() {
+  return Boolean(getReloadUrl() || getReloadCommand())
+}
+
+function isAutoReloadEnabled() {
+  return isTruthy(process.env.MEME_API_AUTO_RELOAD)
 }
 
 function normalizeRepoName(url: string) {
@@ -448,6 +477,45 @@ function formatError(error: unknown) {
   return "未知错误"
 }
 
+async function triggerMemeApiReload(): Promise<ReloadResult> {
+  const reloadUrl = getReloadUrl()
+  if (reloadUrl) {
+    const response = await fetch(reloadUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ source: "meme-manager-ui" }),
+      cache: "no-store",
+    })
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => "")
+      throw new Error(text || `重载请求失败，状态码 ${response.status}`)
+    }
+
+    return { mode: "url" }
+  }
+
+  const reloadCommand = getReloadCommand()
+  if (reloadCommand) {
+    await execAsync(reloadCommand, {
+      windowsHide: true,
+    })
+    return { mode: "command" }
+  }
+
+  throw new Error("未配置 Meme API 重载方式")
+}
+
+async function maybeAutoReloadMemeApi() {
+  if (!isAutoReloadEnabled() || !isReloadConfigured()) {
+    return
+  }
+
+  await triggerMemeApiReload()
+}
+
 async function rebuildManagedMemes() {
   const { configStore, stateStore } = await getStores()
   const stateMap = new Map(stateStore.states.map((state) => [state.repoId, state]))
@@ -554,6 +622,8 @@ export async function getManagerSummary() {
     dataRoot: getDataRoot(),
     managedMemesDir: getManagedMemesDir(),
     memeGeneratorMemeDirsEnv: JSON.stringify([getManagedMemesDir()]),
+    reloadConfigured: isReloadConfigured(),
+    autoReloadEnabled: isAutoReloadEnabled(),
   }
 }
 
@@ -633,6 +703,7 @@ export async function requestRepoSync(repoId: string) {
           lastError: null,
         })
         await rebuildManagedMemes()
+        await maybeAutoReloadMemeApi()
       } catch (error) {
         await saveStatePatch(repoId, {
           status: "error",
@@ -683,6 +754,7 @@ export async function setRepoEnabled(repoId: string, enabled: boolean) {
   }
   await writeConfigStore(configStore)
   await rebuildManagedMemes()
+  await maybeAutoReloadMemeApi()
   return configStore.repos[index]
 }
 
@@ -719,6 +791,7 @@ export async function requestRemoveRepo(repoId: string) {
 
         await fs.rm(getRepoDirectory(repoId), { recursive: true, force: true })
         await rebuildManagedMemes()
+        await maybeAutoReloadMemeApi()
       } catch (error) {
         await saveStatePatch(repoId, {
           status: "error",
@@ -756,6 +829,11 @@ export async function updateRepoMemeRoot(repoId: string, memeRoot: string) {
     lastError: null,
   })
   await rebuildManagedMemes()
+  await maybeAutoReloadMemeApi()
+}
+
+export async function reloadMemeApi() {
+  return triggerMemeApiReload()
 }
 
 export function getComposeExample() {

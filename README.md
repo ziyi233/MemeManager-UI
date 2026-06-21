@@ -88,6 +88,31 @@ npm run dev
 
 也就是说，`meme-generator` 不直接读取每个扩展仓库，而是只读 `MemeManager UI` 汇总后的共享目录
 
+## 重载 Meme API
+
+`meme-generator` 当前没有现成的热重载接口，新增表情想立刻生效，通常需要额外触发一次重载或重启
+
+`MemeManager UI` 现在支持两种方式：
+
+- 手动点击页面右上角的 `重载 Meme API`
+- 在同步完成后自动触发重载
+
+通过环境变量配置：
+
+- `MEME_API_RELOAD_URL`：向一个 URL 发送 `POST` 请求
+- `MEME_API_RELOAD_COMMAND`：执行一条本地命令
+- `MEME_API_AUTO_RELOAD=true`：在同步、启停、移除、根目录变更后自动触发重载
+
+推荐默认先不开自动重载，先用手动按钮
+
+原因很简单：
+
+- 有些人希望多次同步完再统一重载一次
+- 自动重载在网络抖动或目标服务未就绪时更容易报错
+- 手动按钮更稳，也更符合第一版预期
+
+如果你的 `meme-generator` 外面已经包了一层重启脚本、Webhook 或管理 API，再打开自动重载会更顺手
+
 ## Docker Compose 示例
 
 ```yaml

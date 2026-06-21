@@ -12,6 +12,8 @@ type DashboardData = {
     dataRoot: string
     managedMemesDir: string
     memeGeneratorMemeDirsEnv: string
+    reloadConfigured: boolean
+    autoReloadEnabled: boolean
   }
 }
 
@@ -170,6 +172,19 @@ export function RepoDashboard({
     }
   }
 
+  async function handleReloadMemeApi() {
+    setFlash(null)
+    try {
+      const result = await fetchJson<{ mode: "url" | "command" }>("/api/meme-api/reload", {
+        method: "POST",
+        body: JSON.stringify({}),
+      })
+      setFlash({ type: "success", text: result.mode === "url" ? "已发送重载请求" : "已执行重载命令" })
+    } catch (error) {
+      setFlash({ type: "error", text: error instanceof Error ? error.message : "重载失败" })
+    }
+  }
+
   async function handleSync(repoId: string) {
     setPending(repoId, "syncing")
     try {
@@ -234,6 +249,13 @@ export function RepoDashboard({
         <div className="flex items-center gap-2">
           <button
             type="button"
+            onClick={() => void handleReloadMemeApi()}
+            className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-[14px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
+          >
+            重载 Meme API
+          </button>
+          <button
+            type="button"
             onClick={() => void handleSyncAll()}
             className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border)] bg-white px-3 text-[14px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]"
           >
@@ -291,6 +313,13 @@ export function RepoDashboard({
           <div className="mt-6 border-t border-[var(--border)] pt-4 text-[13px] leading-5 text-[var(--foreground-muted)]">
             <p>未同步仓库只保存配置，不会立刻拉代码</p>
             <p className="mt-2">同步成功后，启用中的仓库会自动汇总到共享目录</p>
+            <p className="mt-2">
+              {data.summary.reloadConfigured
+                ? data.summary.autoReloadEnabled
+                  ? "已配置自动重载，同步成功后会尝试通知 Meme API"
+                  : "已配置手动重载，可以在右上角点击按钮让 Meme API 重新加载"
+                : "还未配置 Meme API 重载方式，新增表情后通常需要你手动重启 meme-generator"}
+            </p>
           </div>
         </section>
 
