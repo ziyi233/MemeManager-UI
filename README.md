@@ -90,7 +90,9 @@ npm run dev
 
 ## 重载 Meme API
 
-`meme-generator` 当前没有现成的热重载接口，新增表情想立刻生效，通常需要额外触发一次重载或重启
+你现在使用的 `meme-generator` 已经提供正式重载端点：`POST /memes/reload`
+
+所以新增、启停、移除表情仓库后，不需要重启整个服务，只要触发一次 reload 即可生效
 
 `MemeManager UI` 现在支持两种方式：
 
@@ -103,6 +105,12 @@ npm run dev
 - `MEME_API_RELOAD_COMMAND`：执行一条本地命令
 - `MEME_API_AUTO_RELOAD=true`：在同步、启停、移除、根目录变更后自动触发重载
 
+推荐优先用 URL 方式，直接指向：
+
+```text
+http://meme-generator:2233/memes/reload
+```
+
 推荐默认先不开自动重载，先用手动按钮
 
 原因很简单：
@@ -111,7 +119,7 @@ npm run dev
 - 自动重载在网络抖动或目标服务未就绪时更容易报错
 - 手动按钮更稳，也更符合第一版预期
 
-如果你的 `meme-generator` 外面已经包了一层重启脚本、Webhook 或管理 API，再打开自动重载会更顺手
+如果你的部署里已经有额外的反向代理、鉴权层或控制脚本，也可以继续改用 `MEME_API_RELOAD_COMMAND` 或你自己的重载 URL
 
 ## Docker Compose 示例
 
@@ -132,6 +140,7 @@ services:
       - "3000:3000"
     environment:
       DATA_ROOT: /data
+      MEME_API_RELOAD_URL: http://meme-generator:2233/memes/reload
     volumes:
       - meme-data:/data
 
@@ -168,6 +177,6 @@ ghcr.io/<owner>/<repo>
 
 ## 当前限制
 
-- `meme-generator` 本身通常需要重启后才会重新加载新增表情
 - 某些第三方仓库之间可能出现表情目录重名冲突
 - 网络不稳定时，`git clone` 仍可能失败，但失败目录会自动清理，下一次可以直接重试
+- 如果没有配置 `MEME_API_RELOAD_URL` 或 `MEME_API_RELOAD_COMMAND`，同步成功后仍需要你自己调用 `POST /memes/reload`

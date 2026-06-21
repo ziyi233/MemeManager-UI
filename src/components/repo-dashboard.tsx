@@ -316,9 +316,9 @@ export function RepoDashboard({
             <p className="mt-2">
               {data.summary.reloadConfigured
                 ? data.summary.autoReloadEnabled
-                  ? "已配置自动重载，同步成功后会尝试通知 Meme API"
-                  : "已配置手动重载，可以在右上角点击按钮让 Meme API 重新加载"
-                : "还未配置 Meme API 重载方式，新增表情后通常需要你手动重启 meme-generator"}
+                  ? "已配置自动重载，同步成功后会调用 Meme API 的 reload 接口"
+                  : "已配置手动重载，可以在右上角点击按钮调用 Meme API 的 reload 接口"
+                : "还未配置 Meme API 重载方式，新增表情后需要你手动触发 meme-generator 的 /memes/reload"}
             </p>
           </div>
         </section>
