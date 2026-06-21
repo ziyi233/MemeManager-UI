@@ -152,6 +152,8 @@ volumes:
 
 项目自带多阶段 `Dockerfile`，运行方式是 Next standalone
 
+即使项目里没有 `public/` 目录，镜像构建也可以正常完成
+
 默认环境变量：
 
 - `PORT=3000`
