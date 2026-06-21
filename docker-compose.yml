@@ -6,7 +6,7 @@ services:
       - "2233:2233"
     environment:
       MEME_DIRS: '["/data/managed/memes"]'
-      LOAD_BUILTIN_MEMES: "true"
+      LOAD_BUILTIN_MEMES: "false"
       MEME_DISABLED_LIST: "[]"
       LOG_LEVEL: INFO
     volumes:

@@ -129,6 +129,7 @@ http://meme-generator:2233/memes/reload
 
 - `meme-generator`：`ghcr.io/ziyi233/meme-generator:latest`
 - `meme-manager-ui`：`ghcr.io/ziyi233/mememanager-ui:latest`
+- 内置表情包：关闭，并且镜像中不再包含内置表情目录
 - 共享数据目录：`./data:/data`
 - 管理面板端口：`6667:3000`
 
@@ -151,6 +152,7 @@ services:
     ports:
       - "2233:2233"
     environment:
+      LOAD_BUILTIN_MEMES: "false"
       MEME_DIRS: '["/data/managed/memes"]'
     volumes:
       - ./data:/data
