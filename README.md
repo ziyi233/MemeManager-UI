@@ -123,29 +123,47 @@ http://meme-generator:2233/memes/reload
 
 ## Docker Compose 示例
 
+推荐直接使用项目根目录里的 `docker-compose.yml`
+
+这个版本默认：
+
+- `meme-generator`：`ghcr.io/ziyi233/meme-generator:latest`
+- `meme-manager-ui`：`ghcr.io/ziyi233/mememanager-ui:latest`
+- 共享数据目录：`./data:/data`
+- 管理面板端口：`6667:3000`
+
+启动：
+
+```bash
+docker compose up -d
+```
+
+停止：
+
+```bash
+docker compose down
+```
+
 ```yaml
 services:
   meme-generator:
-    image: ghcr.io/memecrafters/meme-generator:latest
+    image: ghcr.io/ziyi233/meme-generator:latest
     ports:
       - "2233:2233"
     environment:
       MEME_DIRS: '["/data/managed/memes"]'
     volumes:
-      - meme-data:/data
+      - ./data:/data
 
   meme-manager-ui:
     image: ghcr.io/ziyi233/mememanager-ui:latest
     ports:
-      - "3000:3000"
+      - "6667:3000"
     environment:
       DATA_ROOT: /data
       MEME_API_RELOAD_URL: http://meme-generator:2233/memes/reload
     volumes:
-      - meme-data:/data
-
-volumes:
-  meme-data:
+      - ./data:/data
 ```
 
 ## Docker 镜像
