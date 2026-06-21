@@ -472,7 +472,7 @@ export function RepoDashboard({
               const conflicts = repo.conflicts || []
 
               return (
-                <article key={repo.id} className="grid min-w-0 gap-4 py-5 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                <article key={repo.id} className="min-w-0 py-5">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-3">
                       <h3 className="text-[14px] font-medium">{repo.name}</h3>
@@ -524,7 +524,7 @@ export function RepoDashboard({
                     </form>
                   </div>
 
-                  <div className="flex shrink-0 flex-wrap gap-2 md:justify-end">
+                  <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--border)] pt-3">
                     <button type="button" onClick={() => void handleSync(repo.id)} disabled={busy} className="inline-flex h-8 items-center rounded-md border border-[var(--border)] bg-white px-3 text-[14px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
                       {repo.status === "syncing" || localPending === "syncing" ? "同步中..." : "同步"}
                     </button>
