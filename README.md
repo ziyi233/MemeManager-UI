@@ -62,6 +62,18 @@ npm run dev
 
 健康检查：`/api/health`
 
+生产启动前需要先构建：
+
+```bash
+npm run build
+npm run start
+```
+
+`npm run start` 会同时启动：
+
+- Web 界面：`3000`
+- NestJS 后端服务：`3001`，仅供 Web 服务内部调用
+
 ## 数据目录
 
 运行时数据默认写在 `data/` 下面：
@@ -196,7 +208,9 @@ services:
 
 ## Docker 镜像
 
-项目自带多阶段 `Dockerfile`，运行方式是 Next standalone
+项目自带多阶段 `Dockerfile`，运行时会同时启动 Web 和 NestJS 后端服务
+
+Docker/Compose 对外只暴露 Web 端口，NestJS 后端默认绑定在容器内部的 `127.0.0.1:3001`
 
 即使项目里没有 `public/` 目录，镜像构建也可以正常完成
 
@@ -205,6 +219,8 @@ services:
 - `PORT=3000`
 - `HOSTNAME=0.0.0.0`
 - `DATA_ROOT=/data`
+- `SERVER_HOST=127.0.0.1`
+- `SERVER_PORT=3001`
 
 ## GitHub Actions
 

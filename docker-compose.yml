@@ -29,8 +29,10 @@ services:
       - "6667:3000"
     environment:
       DATA_ROOT: /data
+      SERVER_API_ORIGIN: http://127.0.0.1:3001
       MEME_API_RELOAD_URL: http://meme-generator:2233/memes/reload
       MEME_API_AUTO_RELOAD: "false"
+      MEME_REPO_URL_PREFIX: ${MEME_REPO_URL_PREFIX:-}
     volumes:
       - ./data:/data
     restart: unless-stopped
