@@ -1,7 +1,6 @@
-export function GET() {
-  return Response.json({
-    name: "MemeManager UI",
-    status: "ok",
-    timestamp: new Date().toISOString(),
-  })
+import { serverFetch } from "@/lib/server-api"
+
+export async function GET() {
+  const { response, data } = await serverFetch("/health")
+  return Response.json(data, { status: response.status })
 }

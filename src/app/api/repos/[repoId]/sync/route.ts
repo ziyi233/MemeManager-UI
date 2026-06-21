@@ -1,10 +1,14 @@
-import { requestRepoSync } from "@/lib/meme-manager"
+import { serverFetch } from "@/lib/server-api"
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ repoId: string }> },
 ) {
   const { repoId } = await context.params
-  const result = await requestRepoSync(repoId)
-  return Response.json(result, { status: 202 })
+  const body = await request.text()
+  const { response, data } = await serverFetch(`/repos/${repoId}/sync`, {
+    method: "POST",
+    body: body || JSON.stringify({}),
+  })
+  return Response.json(data, { status: response.status })
 }

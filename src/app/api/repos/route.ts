@@ -1,22 +1,15 @@
-import { addRepo, getDashboardData } from "@/lib/meme-manager"
+import { serverFetch } from "@/lib/server-api"
 
 export async function GET() {
-  const data = await getDashboardData()
-  return Response.json(data)
+  const { response, data } = await serverFetch("/repos")
+  return Response.json(data, { status: response.status })
 }
 
 export async function POST(request: Request) {
-  const body = (await request.json()) as {
-    url?: string
-    branch?: string
-    customMemeRoot?: string
-  }
-
-  const repo = await addRepo({
-    url: body.url || "",
-    branch: body.branch || "main",
-    customMemeRoot: body.customMemeRoot || "",
+  const body = await request.json()
+  const { response, data } = await serverFetch("/repos", {
+    method: "POST",
+    body: JSON.stringify(body),
   })
-
-  return Response.json({ ok: true, repo }, { status: 201 })
+  return Response.json(data, { status: response.status })
 }

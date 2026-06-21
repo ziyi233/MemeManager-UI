@@ -1,15 +1,9 @@
-import { reloadMemeApi } from "@/lib/meme-manager"
+import { serverFetch } from "@/lib/server-api"
 
 export async function POST() {
-  try {
-    const result = await reloadMemeApi()
-    return Response.json({ ok: true, ...result })
-  } catch (error) {
-    return Response.json(
-      {
-        error: error instanceof Error ? error.message : "重载失败",
-      },
-      { status: 500 },
-    )
-  }
+  const { response, data } = await serverFetch("/meme-api/reload", {
+    method: "POST",
+    body: JSON.stringify({}),
+  })
+  return Response.json(data, { status: response.status })
 }
