@@ -378,9 +378,16 @@ async function withRepoLock<T>(repoId: string, task: () => Promise<T>) {
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   try {
     const raw = await fs.readFile(filePath, "utf8")
+    if (!raw.trim()) {
+      return fallback
+    }
     return JSON.parse(raw) as T
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return fallback
+    }
+
+    if (error instanceof SyntaxError) {
       return fallback
     }
 
@@ -389,7 +396,10 @@ async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
 }
 
 async function writeJsonFile(filePath: string, value: unknown) {
-  await fs.writeFile(filePath, JSON.stringify(value, null, 2), "utf8")
+  await ensureDir(path.dirname(filePath))
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`
+  await fs.writeFile(tempPath, JSON.stringify(value, null, 2), "utf8")
+  await fs.rename(tempPath, filePath)
 }
 
 async function seedDefaultDataIfNeeded() {
