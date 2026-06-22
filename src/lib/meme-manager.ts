@@ -8,6 +8,23 @@ const execFileAsync = promisify(execFile)
 const execAsync = promisify(exec)
 const jobEventBus = new EventEmitter()
 
+export type DashboardData = {
+  repos: ManagedRepo[]
+  jobs: Job[]
+  summary: {
+    count: number
+    totalMemeCount: number
+    linkedMemeCount: number
+    conflictCount: number
+    dataRoot: string
+    managedMemesDir: string
+    memeGeneratorMemeDirsEnv: string
+    repoUrlPrefixConfigured: boolean
+    reloadConfigured: boolean
+    autoReloadEnabled: boolean
+  }
+}
+
 export type RepoStatus = "unsynced" | "syncing" | "ready" | "error" | "deleting"
 
 export type RepoConfig = {
