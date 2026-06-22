@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { Fragment, useEffect, useMemo, useState } from "react"
 import { AlertTriangle, GitBranch, Plus, RefreshCw, Trash2 } from "lucide-react"
 
 import type { Job, ManagedRepo, RepoLogEntry } from "@/lib/meme-manager"
@@ -143,6 +143,7 @@ export function RepoDashboard({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [pendingRepoIds, setPendingRepoIds] = useState<Record<string, "syncing" | "deleting" | "saving" | "toggling">>({})
   const [selectedJobId, setSelectedJobId] = useState<string | null>(initialData.jobs[0]?.id || null)
+  const [taskPage, setTaskPage] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -207,6 +208,9 @@ export function RepoDashboard({
 
   const repoCount = useMemo(() => data.repos.length, [data.repos.length])
   const selectedJob = data.jobs.find((job) => job.id === selectedJobId) || data.jobs[0] || null
+  const taskPageCount = Math.max(1, Math.ceil(data.jobs.length / 4))
+  const currentTaskPage = Math.min(taskPage, taskPageCount - 1)
+  const visibleJobs = data.jobs.slice(currentTaskPage * 4, currentTaskPage * 4 + 4)
 
   function setPending(repoId: string, value?: "syncing" | "deleting" | "saving" | "toggling") {
     setPendingRepoIds((current) => {
@@ -398,21 +402,7 @@ export function RepoDashboard({
             </form>
 
             <div className="mt-6 border-t border-[var(--border)] pt-4 text-[13px] leading-5 text-[var(--foreground-muted)]">
-              <p>未同步仓库只保存配置，不会立刻拉代码</p>
-              <p className="mt-2">同步成功后，启用中的仓库会自动汇总到共享目录</p>
-              <p className="mt-2">当前统计：{data.summary.totalMemeCount} 个表情，{data.summary.linkedMemeCount} 个已共享，{data.summary.conflictCount} 处冲突</p>
-              <p className="mt-2">
-                {data.summary.repoUrlPrefixConfigured
-                  ? "当前已配置仓库拉取源前缀，同步时会优先走镜像源"
-                  : "当前直接从仓库原始地址拉取，网络差时可以配置仓库拉取源前缀"}
-              </p>
-              <p className="mt-2">
-                {data.summary.reloadConfigured
-                  ? data.summary.autoReloadEnabled
-                    ? "已配置自动重载，同步成功后会调用 Meme API 的 reload 接口"
-                    : "已配置手动重载，可以在右上角点击按钮调用 Meme API 的 reload 接口"
-                  : "还未配置 Meme API 重载方式，新增表情后需要你手动触发 meme-generator 的 /memes/reload"}
-              </p>
+              <p>当前统计：{data.summary.totalMemeCount} 个表情，{data.summary.linkedMemeCount} 个已共享，{data.summary.conflictCount} 处冲突</p>
             </div>
           </section>
 
@@ -422,23 +412,35 @@ export function RepoDashboard({
               <span className="text-[12px] text-[var(--foreground-muted)]">{data.jobs.length} 条</span>
             </div>
 
-            <div className="mt-3 flex gap-2 overflow-x-auto pb-2">
-              {data.jobs.length ? data.jobs.map((job) => (
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              {visibleJobs.length ? visibleJobs.map((job) => (
                 <button
                   key={job.id}
                   type="button"
                   onClick={() => setSelectedJobId(job.id)}
-                  className={`min-w-[200px] rounded-md border px-3 py-2.5 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
+                  className={`min-h-[76px] rounded-md border px-2.5 py-2 text-left transition-colors ${selectedJob?.id === job.id ? "border-[var(--foreground)] bg-white" : "border-[var(--border)] bg-white/60 hover:bg-white"}`}
                 >
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[12px] font-medium text-[var(--foreground)]">{formatJobType(job.type)}</span>
-                    <span className={`rounded-full border px-2 py-0.5 text-[11px] ${statusClassName[getJobTone(job.status)]}`}>{getJobStatusLabel(job.status)}</span>
+                    <span className="text-[11px] font-medium text-[var(--foreground)]">{formatJobType(job.type)}</span>
+                    <span className={`rounded-full border px-1.5 py-0.5 text-[10px] ${statusClassName[getJobTone(job.status)]}`}>{getJobStatusLabel(job.status)}</span>
                   </div>
-                  <p className="mt-1.5 truncate text-[11px] text-[var(--foreground-muted)]">{job.repoName || "全局任务"}</p>
-                  <p className="mt-1 truncate text-[11px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
+                  <p className="mt-1.5 truncate text-[10px] text-[var(--foreground-muted)]">{job.repoName || "全局任务"}</p>
+                  <p className="mt-1 truncate text-[10px] text-[var(--foreground-muted)]">{job.message || "无任务说明"}</p>
                 </button>
               )) : <p className="text-[13px] text-[var(--foreground-muted)]">还没有任务记录</p>}
             </div>
+
+            {data.jobs.length > 4 ? (
+              <div className="mt-3 flex items-center justify-between text-[12px] text-[var(--foreground-muted)]">
+                <button type="button" disabled={currentTaskPage === 0} onClick={() => setTaskPage((current) => Math.max(0, current - 1))} className="rounded-md border border-[var(--border)] bg-white px-2.5 py-1 transition-colors hover:bg-[#fafafa] disabled:cursor-not-allowed disabled:opacity-45">
+                  上一页
+                </button>
+                <span>{currentTaskPage + 1} / {taskPageCount}</span>
+                <button type="button" disabled={currentTaskPage >= taskPageCount - 1} onClick={() => setTaskPage((current) => Math.min(taskPageCount - 1, current + 1))} className="rounded-md border border-[var(--border)] bg-white px-2.5 py-1 transition-colors hover:bg-[#fafafa] disabled:cursor-not-allowed disabled:opacity-45">
+                  下一页
+                </button>
+              </div>
+            ) : null}
 
             <div className="mt-3 rounded-md border border-[var(--border)] bg-white p-3">
               {selectedJob ? (
@@ -465,80 +467,115 @@ export function RepoDashboard({
             </span>
           </div>
 
-          <div className="divide-y divide-[var(--border)]">
-            {data.repos.map((repo) => {
-              const localPending = pendingRepoIds[repo.id]
-              const busy = repo.status === "syncing" || repo.status === "deleting" || Boolean(localPending)
-              const conflicts = repo.conflicts || []
+          <div className="mt-4 overflow-x-auto rounded-lg border border-[var(--border)]">
+            <table className="w-full min-w-[980px] border-collapse text-left text-[13px]">
+              <thead className="bg-[var(--background-subtle)] text-[12px] font-medium text-[var(--foreground-muted)]">
+                <tr>
+                  <th className="w-[34%] px-4 py-3">仓库</th>
+                  <th className="w-[18%] px-4 py-3">状态</th>
+                  <th className="w-[14%] px-4 py-3">表情</th>
+                  <th className="w-[22%] px-4 py-3">根目录</th>
+                  <th className="w-[12%] px-4 py-3 text-right">操作</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)] bg-white">
+                {data.repos.map((repo) => {
+                  const localPending = pendingRepoIds[repo.id]
+                  const busy = repo.status === "syncing" || repo.status === "deleting" || Boolean(localPending)
+                  const conflicts = repo.conflicts || []
 
-              return (
-                <article key={repo.id} className="min-w-0 py-5">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-3">
-                      <h3 className="text-[14px] font-medium">{repo.name}</h3>
-                      <span className={`rounded-full border px-2.5 py-1 text-[12px] ${statusClassName[getRepoTone(repo.status)]}`}>{getRepoStatusLabel(repo.status)}</span>
-                      {!repo.enabled ? <span className="rounded-full border border-[var(--border)] px-2.5 py-1 text-[12px] text-[var(--foreground-muted)]">已停用</span> : null}
-                    </div>
+                  return (
+                    <Fragment key={repo.id}>
+                      <tr className="align-top transition-colors hover:bg-[#fafafa]">
+                        <td className="px-4 py-4">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span className="truncate text-[14px] font-medium text-[var(--foreground)]">{repo.name}</span>
+                            {!repo.enabled ? <span className="shrink-0 rounded-full border border-[var(--border)] px-2 py-0.5 text-[11px] text-[var(--foreground-muted)]">停用</span> : null}
+                          </div>
+                          <div className="mt-2 flex min-w-0 items-center gap-2 text-[12px] text-[var(--foreground-muted)]">
+                            <GitBranch aria-hidden="true" className="size-3.5 shrink-0" />
+                            <code translate="no" className="truncate font-mono text-[12px]">{repo.url}</code>
+                          </div>
+                          <p className="mt-2 truncate text-[12px] text-[var(--foreground-muted)]">分支: {repo.branch}{repo.lastCommitHash ? ` | 提交: ${repo.lastCommitHash}` : ""}</p>
+                        </td>
 
-                    <div className="mt-2 flex min-w-0 items-center gap-2 text-[13px] text-[var(--foreground-muted)]">
-                      <GitBranch aria-hidden="true" className="size-4 shrink-0" />
-                      <code translate="no" className="min-w-0 truncate font-mono text-[13px]">{repo.url}</code>
-                    </div>
+                        <td className="px-4 py-4">
+                          <span className={`inline-flex rounded-full border px-2.5 py-1 text-[12px] ${statusClassName[getRepoTone(repo.status)]}`}>{getRepoStatusLabel(repo.status)}</span>
+                          <p className="mt-2 line-clamp-2 text-[12px] leading-5 text-[var(--foreground-muted)]">{formatDetail(repo)}</p>
+                          {repo.lastSyncedAt ? <p className="mt-1 text-[11px] text-[var(--foreground-muted)]">{repo.lastSyncedAt}</p> : null}
+                        </td>
 
-                    <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">{formatMeta(repo)}</p>
-                    <p className="mt-2 text-[13px] text-[var(--foreground-muted)]">{formatDetail(repo)}</p>
+                        <td className="px-4 py-4">
+                          <div className="grid grid-cols-3 gap-1 text-center">
+                            <span className="rounded-md border border-[var(--border)] px-2 py-1">
+                              <b className="block text-[13px] font-medium text-[var(--foreground)]">{repo.memeCount}</b>
+                              <span className="text-[10px] text-[var(--foreground-muted)]">表情</span>
+                            </span>
+                            <span className="rounded-md border border-[var(--border)] px-2 py-1">
+                              <b className="block text-[13px] font-medium text-[var(--foreground)]">{repo.linkedMemeCount}</b>
+                              <span className="text-[10px] text-[var(--foreground-muted)]">共享</span>
+                            </span>
+                            <span className={`rounded-md border px-2 py-1 ${repo.conflictCount ? "border-amber-200 bg-amber-50 text-amber-700" : "border-[var(--border)] text-[var(--foreground-muted)]"}`}>
+                              <b className="block text-[13px] font-medium">{repo.conflictCount}</b>
+                              <span className="text-[10px]">冲突</span>
+                            </span>
+                          </div>
+                        </td>
 
-                    <div className="mt-3 flex flex-wrap gap-2 text-[12px]">
-                      <span className="rounded-md border border-[var(--border)] bg-white px-2.5 py-1 text-[var(--foreground-muted)]">表情 {repo.memeCount}</span>
-                      <span className="rounded-md border border-[var(--border)] bg-white px-2.5 py-1 text-[var(--foreground-muted)]">共享 {repo.linkedMemeCount}</span>
-                      {repo.conflictCount ? <span className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1 text-amber-700">冲突 {repo.conflictCount}</span> : null}
-                    </div>
+                        <td className="px-4 py-4">
+                          <form
+                            className="flex items-center gap-2"
+                            onSubmit={(event) => {
+                              event.preventDefault()
+                              const formData = new FormData(event.currentTarget)
+                              void handleSaveRoot(repo.id, String(formData.get("customMemeRoot") || ""))
+                            }}
+                          >
+                            <input name="customMemeRoot" type="text" defaultValue={repo.customMemeRoot || repo.memeRoot || ""} autoComplete="off" aria-label="表情根目录" placeholder="memes / meme / emoji" className="h-8 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-white px-2.5 text-[12px] text-[var(--foreground)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]" />
+                            <button type="submit" disabled={busy} className="inline-flex h-8 shrink-0 items-center rounded-md border border-[var(--border)] bg-white px-2.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
+                              {localPending === "saving" ? "保存中" : "保存"}
+                            </button>
+                          </form>
+                        </td>
 
-                    {conflicts.length ? (
-                      <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-800">
-                        <div className="flex items-center gap-2 font-medium">
-                          <AlertTriangle aria-hidden="true" className="size-4" />
-                          重名表情
-                        </div>
-                        <div className="mt-2 grid gap-1">
-                          {conflicts.slice(0, 5).map((conflict) => (
-                            <p key={`${conflict.memeName}-${conflict.ownerRepoId}-${conflict.conflictingRepoId}`}>{formatConflict(repo, conflict)}</p>
-                          ))}
-                          {conflicts.length > 5 ? <p>还有 {conflicts.length - 5} 处冲突未显示</p> : null}
-                        </div>
-                      </div>
-                    ) : null}
+                        <td className="px-4 py-4">
+                          <div className="flex justify-end gap-2">
+                            <button type="button" onClick={() => void handleSync(repo.id)} disabled={busy} className="inline-flex h-8 items-center rounded-md border border-[var(--border)] bg-white px-2.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
+                              {repo.status === "syncing" || localPending === "syncing" ? "同步中" : "同步"}
+                            </button>
+                            <button type="button" onClick={() => void handleToggle(repo.id, !repo.enabled)} disabled={busy} className="inline-flex h-8 items-center rounded-md border border-[var(--border)] bg-white px-2.5 text-[12px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
+                              {localPending === "toggling" ? "更新中" : repo.enabled ? "停用" : "启用"}
+                            </button>
+                            <button type="button" onClick={() => void handleRemove(repo.id)} disabled={busy} aria-label="移除仓库" className="inline-flex size-8 items-center justify-center rounded-md text-[var(--foreground-muted)] transition-colors hover:bg-[#fafafa] hover:text-[var(--danger)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
+                              <Trash2 aria-hidden="true" className="size-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
 
-                    <form
-                      className="mt-3 flex flex-wrap items-center gap-2"
-                      onSubmit={(event) => {
-                        event.preventDefault()
-                        const formData = new FormData(event.currentTarget)
-                        void handleSaveRoot(repo.id, String(formData.get("customMemeRoot") || ""))
-                      }}
-                    >
-                      <input name="customMemeRoot" type="text" defaultValue={repo.customMemeRoot || repo.memeRoot || ""} autoComplete="off" aria-label="表情根目录" placeholder="手动指定表情根目录" className="h-8 min-w-[220px] rounded-md border border-[var(--border)] bg-white px-3 text-[13px] text-[var(--foreground)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]" />
-                      <button type="submit" disabled={busy} className="inline-flex h-8 items-center rounded-md border border-[var(--border)] bg-white px-3 text-[13px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
-                        {localPending === "saving" ? "保存中..." : "保存根目录"}
-                      </button>
-                    </form>
-                  </div>
-
-                  <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--border)] pt-3">
-                    <button type="button" onClick={() => void handleSync(repo.id)} disabled={busy} className="inline-flex h-8 items-center rounded-md border border-[var(--border)] bg-white px-3 text-[14px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
-                      {repo.status === "syncing" || localPending === "syncing" ? "同步中..." : "同步"}
-                    </button>
-                    <button type="button" onClick={() => void handleToggle(repo.id, !repo.enabled)} disabled={busy} className="inline-flex h-8 items-center rounded-md border border-[var(--border)] bg-white px-3 text-[14px] font-medium text-[var(--foreground)] transition-colors hover:bg-[#fafafa] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
-                      {localPending === "toggling" ? "更新中..." : repo.enabled ? "停用" : "启用"}
-                    </button>
-                    <button type="button" onClick={() => void handleRemove(repo.id)} disabled={busy} className="inline-flex h-8 items-center gap-1 rounded-md px-3 text-[14px] font-medium text-[var(--foreground-muted)] transition-colors hover:bg-[#fafafa] hover:text-[var(--danger)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-50">
-                      <Trash2 aria-hidden="true" className="size-4" />
-                      {repo.status === "deleting" || localPending === "deleting" ? "删除中..." : "移除"}
-                    </button>
-                  </div>
-                </article>
-              )
-            })}
+                      {conflicts.length ? (
+                        <tr className="bg-amber-50/70">
+                          <td colSpan={5} className="px-4 py-3 text-[12px] leading-5 text-amber-800">
+                            <div className="flex items-start gap-2">
+                              <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+                              <div className="min-w-0">
+                                <p className="font-medium">重名表情</p>
+                                <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                                  {conflicts.slice(0, 5).map((conflict) => (
+                                    <span key={`${conflict.memeName}-${conflict.ownerRepoId}-${conflict.conflictingRepoId}`}>{formatConflict(repo, conflict)}</span>
+                                  ))}
+                                  {conflicts.length > 5 ? <span>还有 {conflicts.length - 5} 处冲突未显示</span> : null}
+                                </div>
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
 
         </section>
