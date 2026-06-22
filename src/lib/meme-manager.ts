@@ -9,7 +9,7 @@ const execAsync = promisify(exec)
 const jobEventBus = new EventEmitter()
 
 export type DashboardData = {
-  repos: ManagedRepo[]
+  repos: ManagedRepoView[]
   jobs: Job[]
   summary: {
     count: number
@@ -57,6 +57,10 @@ export type RepoState = {
 
 export type ManagedRepo = RepoConfig & RepoState
 
+export type ManagedRepoView = ManagedRepo & {
+  localExists: boolean
+}
+
 export type RepoLogEntry = {
   timestamp: string
   level: "info" | "error"
@@ -93,7 +97,7 @@ export type JobEvent = {
   log?: RepoLogEntry
 }
 
-type RepoScanEntry = ManagedRepo & {
+type RepoScanEntry = ManagedRepoView & {
   memeNames: string[]
   memeRootPath: string | null
 }
@@ -750,6 +754,7 @@ async function scanRepoFromDisk(repo: RepoConfig): Promise<RepoScanEntry> {
     return {
       ...repo,
       ...baseState,
+      localExists: false,
       status: "unsynced",
       statusMessage: "本地仓库目录不存在，等待同步",
       memeNames: [],
@@ -761,6 +766,7 @@ async function scanRepoFromDisk(repo: RepoConfig): Promise<RepoScanEntry> {
     return {
       ...repo,
       ...baseState,
+      localExists: true,
       status: "error",
       statusMessage: "本地目录存在，但不是 Git 仓库",
       lastError: "本地目录存在，但没有 .git",
@@ -779,6 +785,7 @@ async function scanRepoFromDisk(repo: RepoConfig): Promise<RepoScanEntry> {
     return {
       ...repo,
       ...baseState,
+      localExists: true,
       status: "error",
       statusMessage: "未找到可加载的表情根目录",
       lastCommitHash: commitHash,
@@ -793,6 +800,7 @@ async function scanRepoFromDisk(repo: RepoConfig): Promise<RepoScanEntry> {
     return {
       ...repo,
       ...baseState,
+      localExists: true,
       status: "error",
       statusMessage: `表情根目录不存在：${detectedRoot}`,
       memeRoot: detectedRoot,
@@ -807,6 +815,7 @@ async function scanRepoFromDisk(repo: RepoConfig): Promise<RepoScanEntry> {
   return {
     ...repo,
     ...baseState,
+    localExists: true,
     branch: branchName || repo.branch,
     status: "ready",
     statusMessage: repo.enabled ? "已从本地仓库感知" : "已停用，不写入共享目录",
@@ -1271,17 +1280,23 @@ export async function requestRemoveRepo(repoId: string) {
         if (controller.signal.aborted) {
           throw new Error("任务已取消")
         }
-        await startJob(job.id, `开始删除仓库 ${repo.name}`)
-        const latestConfig = await readConfigStore()
-        latestConfig.repos = latestConfig.repos.filter((item) => item.id !== repoId)
-        await writeConfigStore(latestConfig)
-        await appendJobLog(job.id, "info", "已移除仓库配置")
+        const repoDir = getRepoDirectory(repoId)
+        const localExists = await pathExists(repoDir)
+        await startJob(job.id, localExists ? `开始删除本地仓库 ${repo.name}` : `开始移除仓库记录 ${repo.name}`)
 
-        await fs.rm(getRepoDirectory(repoId), { recursive: true, force: true })
-        await appendJobLog(job.id, "info", "已删除本地仓库目录")
+        if (localExists) {
+          await fs.rm(repoDir, { recursive: true, force: true })
+          await appendJobLog(job.id, "info", "已删除本地仓库目录，配置记录已保留")
+        } else {
+          const latestConfig = await readConfigStore()
+          latestConfig.repos = latestConfig.repos.filter((item) => item.id !== repoId)
+          await writeConfigStore(latestConfig)
+          await appendJobLog(job.id, "info", "本地目录不存在，已移除仓库配置记录")
+        }
+
         await rebuildManagedMemes(job.id)
         await maybeAutoReloadMemeApi(job.id)
-        await finishJob(job.id, "succeeded", `删除完成：${repo.name}`)
+        await finishJob(job.id, "succeeded", localExists ? `本地仓库已删除：${repo.name}` : `仓库记录已移除：${repo.name}`)
       } catch (error) {
         if (isCancelledError(error)) {
           await finishJob(job.id, "cancelled", `已停止：${repo.name}`)

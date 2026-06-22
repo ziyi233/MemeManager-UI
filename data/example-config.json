@@ -1,6 +1,10 @@
 {
   "repos": [
     {
+      "url": "https://github.com/ziyi233/meme-generator-core-memes",
+      "branch": "main"
+    },
+    {
       "url": "https://github.com/MemeCrafters/meme-generator-contrib",
       "branch": "main"
     },

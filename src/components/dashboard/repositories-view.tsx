@@ -3,7 +3,7 @@
 import { Fragment, useState } from "react"
 import { AlertTriangle, Plus, Trash2, GitBranch, RefreshCw, Power, FolderArchive, Square } from "lucide-react"
 
-import type { DashboardData, ManagedRepo } from "@/lib/meme-manager"
+import type { DashboardData, ManagedRepoView } from "@/lib/meme-manager"
 import type { FlashMessage } from "./dashboard-shell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -11,13 +11,13 @@ import { Input } from "@/components/ui/input"
 
 type RepoTone = "success" | "pending" | "danger"
 
-function getRepoTone(status: ManagedRepo["status"]): RepoTone {
+function getRepoTone(status: ManagedRepoView["status"]): RepoTone {
   if (status === "ready") return "success"
   if (status === "error") return "danger"
   return "pending"
 }
 
-function getRepoStatusLabel(status: ManagedRepo["status"]) {
+function getRepoStatusLabel(status: ManagedRepoView["status"]) {
   switch (status) {
     case "ready": return "已同步"
     case "error": return "异常"
@@ -27,16 +27,16 @@ function getRepoStatusLabel(status: ManagedRepo["status"]) {
   }
 }
 
-function formatDetail(repo: ManagedRepo) {
+function formatDetail(repo: ManagedRepoView) {
   if (!repo.enabled) return "已停用，不写入共享目录"
   if (repo.status === "error") return repo.lastError || repo.statusMessage || "同步失败"
   if (repo.status === "deleting") return repo.statusMessage || "正在删除"
   if (repo.status === "syncing") return repo.statusMessage || "正在同步"
-  if (repo.status === "unsynced") return "已添加但未同步"
+  if (repo.status === "unsynced") return repo.localExists ? "已添加但未同步" : "本地文件已删除，配置记录保留"
   return repo.statusMessage || "已同步"
 }
 
-function formatConflict(repo: ManagedRepo, conflict: ManagedRepo["conflicts"][number]) {
+function formatConflict(repo: ManagedRepoView, conflict: ManagedRepoView["conflicts"][number]) {
   if (conflict.ownerRepoId === repo.id) {
     return `${conflict.memeName} (已有，与 ${conflict.conflictingRepoName} 冲突)`
   }
@@ -216,7 +216,7 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
             const tone = getRepoTone(repo.status)
 
             return (
-              <div key={repo.id} className={`flex flex-col lg:flex-row gap-6 p-5 lg:items-center bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors ${!repo.enabled ? "opacity-70 grayscale-[0.2]" : ""}`}>
+              <div key={repo.id} className={`flex flex-col lg:flex-row gap-6 p-5 lg:items-center bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors ${!repo.enabled || !repo.localExists ? "opacity-60 grayscale-[0.35]" : ""}`}>
                 {/* Left: Identity */}
                 <div className="flex-1 min-w-0 flex flex-col gap-2">
                   <div className="flex items-center gap-2.5">
@@ -226,6 +226,9 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
                     </Badge>
                     {!repo.enabled && (
                       <Badge variant="outline" className="h-5 px-1.5 text-[10px] rounded-sm text-zinc-500">已停用</Badge>
+                    )}
+                    {!repo.localExists && (
+                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] rounded-sm text-zinc-500">仅记录</Badge>
                     )}
                     {tone === "danger" && (
                       <Badge variant="destructive" className="h-5 px-1.5 text-[10px] rounded-sm bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800">异常</Badge>
@@ -310,8 +313,9 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
                     <Power className={`size-3 mr-1.5 ${repo.enabled ? "text-rose-500" : "text-emerald-500"}`} />
                     {repo.enabled ? "停用" : "启用"}
                   </Button>
-                  <Button type="button" variant="ghost" size="icon" onClick={() => void handleRemove(repo.id)} disabled={busy} className="h-8 w-8 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50">
-                    <Trash2 className="size-3.5" />
+                  <Button type="button" variant="ghost" size="sm" onClick={() => void handleRemove(repo.id)} disabled={busy} className="h-8 text-xs text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50">
+                    <Trash2 className="size-3.5 mr-1.5" />
+                    {repo.localExists ? "删除文件" : "移除记录"}
                   </Button>
                 </div>
               </div>

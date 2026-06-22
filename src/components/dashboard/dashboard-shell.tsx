@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { RefreshCw, LayoutGrid, TerminalSquare, Settings as SettingsIcon, Menu, X } from "lucide-react"
+import { AlertTriangle, RefreshCw, LayoutGrid, TerminalSquare, Settings as SettingsIcon, Menu, X } from "lucide-react"
 
 import type { DashboardData, Job } from "@/lib/meme-manager"
 import { Button } from "@/components/ui/button"
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { RepositoriesView } from "./repositories-view"
 import { TasksView } from "./tasks-view"
 import { SettingsView } from "./settings-view"
+import { ConflictsView } from "./conflicts-view"
 
 export type FlashMessage = {
   type: "success" | "error"
@@ -34,7 +35,7 @@ async function fetchJson<T>(input: RequestInfo, init?: RequestInit) {
 
 export function DashboardShell({ initialData }: { initialData: DashboardData }) {
   const [data, setData] = useState(initialData)
-  const [activeTab, setActiveTab] = useState<"repos" | "tasks" | "settings">("repos")
+  const [activeTab, setActiveTab] = useState<"repos" | "tasks" | "conflicts" | "settings">("repos")
   const [flash, setFlash] = useState<FlashMessage>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   
@@ -122,12 +123,14 @@ export function DashboardShell({ initialData }: { initialData: DashboardData }) 
   const tabs = [
     { id: "repos", label: "仓库", icon: LayoutGrid },
     { id: "tasks", label: "任务", icon: TerminalSquare },
+    { id: "conflicts", label: "冲突", icon: AlertTriangle },
     { id: "settings", label: "设置", icon: SettingsIcon },
   ] as const
 
   const titleMap = {
     repos: "Repositories",
     tasks: "Tasks Log",
+    conflicts: "Conflicts",
     settings: "System Settings"
   }
 
@@ -232,6 +235,7 @@ export function DashboardShell({ initialData }: { initialData: DashboardData }) 
                 />
               )}
               {activeTab === "tasks" && <TasksView data={data} />}
+              {activeTab === "conflicts" && <ConflictsView data={data} />}
               {activeTab === "settings" && <SettingsView data={data} />}
             </div>
           </div>
@@ -240,4 +244,3 @@ export function DashboardShell({ initialData }: { initialData: DashboardData }) 
     </div>
   )
 }
-

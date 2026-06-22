@@ -40,6 +40,7 @@
 ## 已验证的预置仓库
 
 - `MemeCrafters/meme-generator-contrib`，分支 `main`，根目录 `memes`
+- `ziyi233/meme-generator-core-memes`，分支 `main`
 - `anyliew/meme_emoji`，分支 `main`，根目录 `emoji`
 - `jinjiao007/meme-generator-jj`，分支 `master`，根目录 `memes`
 - `anyliew/crazy_emoji`，分支 `main`，根目录 `emoji`
