@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useState } from "react"
-import { AlertTriangle, Plus, Trash2, GitBranch, RefreshCw, Power, FolderArchive, Square } from "lucide-react"
+import { AlertTriangle, Plus, Trash2, RefreshCw, Power, FolderArchive, Square } from "lucide-react"
 
 import type { DashboardData, ManagedRepoView } from "@/lib/meme-manager"
 import type { FlashMessage } from "./dashboard-shell"
@@ -235,9 +235,9 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
                     )}
                   </div>
                   <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <GitBranch className="size-3.5 shrink-0 opacity-70" />
-                      <span className="truncate max-w-[300px] text-[13px] font-mono" title={repo.url}>{repo.url}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="shrink-0 rounded border border-zinc-200 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400 dark:border-zinc-800">url</span>
+                      <span className="min-w-0 truncate text-[13px] font-mono" title={repo.url}>{repo.url}</span>
                     </div>
                   </div>
                   <div className="text-[12px] text-zinc-500 mt-1 flex items-center gap-2">
