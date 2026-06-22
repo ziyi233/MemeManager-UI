@@ -1,8 +1,13 @@
 .git
 .github
 .next
+dist
+dist-server
 node_modules
 npm-debug.log*
+.env
+.env.local
+.env.production
 README.md
 data/config
 data/state
