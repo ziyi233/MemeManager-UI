@@ -37,8 +37,8 @@ export class ReposController {
 
   @Post("sync-all")
   async syncAll() {
-    await requestSyncAllRepos()
-    return { ok: true }
+    const result = await requestSyncAllRepos()
+    return { ok: true, ...result }
   }
 
   @Post(":repoId/sync")

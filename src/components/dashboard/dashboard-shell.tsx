@@ -98,8 +98,8 @@ export function DashboardShell({ initialData }: { initialData: DashboardData }) 
   async function handleSyncAll() {
     setFlash(null)
     try {
-      await fetchJson("/api/repos/sync-all", { method: "POST", body: JSON.stringify({}) })
-      setFlash({ type: "success", text: "已加入同步队列" })
+      const result = await fetchJson<{ queued?: number; skipped?: number; failed?: number }>("/api/repos/sync-all", { method: "POST", body: JSON.stringify({}) })
+      setFlash({ type: "success", text: `批量同步已处理：${result.queued ?? 0} 个加入，${result.skipped ?? 0} 个跳过，${result.failed ?? 0} 个失败` })
       await refreshNow()
       setActiveTab("tasks")
     } catch (error) {

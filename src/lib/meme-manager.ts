@@ -1213,11 +1213,27 @@ export async function requestSyncAllRepos() {
   })
   await startJob(job.id, "开始批量同步仓库")
   const repos = await readConfigStore()
+  let queuedCount = 0
+  let skippedCount = 0
+  let failedCount = 0
+
   for (const repo of repos.repos) {
-    await appendJobLog(job.id, "info", `加入队列：${repo.name}`)
-    await requestRepoSync(repo.id)
+    try {
+      const result = await requestRepoSync(repo.id)
+      if (result.queued) {
+        queuedCount += 1
+        await appendJobLog(job.id, "info", `已加入队列：${repo.name}`)
+      } else {
+        skippedCount += 1
+        await appendJobLog(job.id, "info", `跳过仓库：${repo.name}，已有任务正在执行`)
+      }
+    } catch (error) {
+      failedCount += 1
+      await appendJobLog(job.id, "error", `仓库入队失败：${repo.name}，${formatError(error)}`)
+    }
   }
-  await finishJob(job.id, "succeeded", "已将全部仓库加入同步队列")
+  await finishJob(job.id, "succeeded", `批量同步入队完成：${queuedCount} 个加入，${skippedCount} 个跳过，${failedCount} 个失败`)
+  return { queued: queuedCount, skipped: skippedCount, failed: failedCount, jobId: job.id }
 }
 
 export async function toggleRepoEnabled(repoId: string) {
