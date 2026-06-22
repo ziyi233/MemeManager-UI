@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Terminal, CheckCircle2, XCircle, Clock, Loader2 } from "lucide-react"
+import { Terminal, CheckCircle2, XCircle, Clock, Loader2, ListTree } from "lucide-react"
 import type { DashboardData, Job } from "@/lib/meme-manager"
 
 function getJobTone(status: Job["status"]) {
@@ -51,41 +51,46 @@ export function TasksView({ data }: { data: DashboardData }) {
 
   if (data.jobs.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-muted-foreground border rounded-lg bg-card border-dashed">
-        <Terminal className="size-10 mb-4 opacity-50" />
-        <p>还没有任务记录</p>
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-140px)] min-h-[400px] text-zinc-400 border border-zinc-200 dark:border-zinc-800 rounded-xl bg-white dark:bg-zinc-950 border-dashed">
+        <Terminal className="size-10 mb-4 opacity-30" />
+        <p className="text-sm">还没有任务记录</p>
       </div>
     )
   }
 
   return (
-    <div className="grid min-h-[560px] gap-4 lg:h-[calc(100vh-190px)] lg:grid-cols-[360px_minmax(0,1fr)]">
+    <div className="flex flex-col md:flex-row h-[calc(100vh-140px)] min-h-[500px] rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden bg-white dark:bg-zinc-950 shadow-sm">
       {/* 左侧任务列表 */}
-      <div className="flex min-h-[280px] flex-col overflow-hidden rounded-lg border bg-card shadow-sm">
-        <div className="flex items-center justify-between border-b bg-muted/30 px-4 py-3 text-sm font-medium">
-          <span>任务列表</span>
-          <span className="text-xs text-muted-foreground">{data.jobs.length} 条</span>
+      <div className="w-full md:w-80 border-b md:border-b-0 md:border-r border-zinc-200 dark:border-zinc-800 flex flex-col bg-zinc-50/50 dark:bg-zinc-900/20">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/50 dark:bg-zinc-900/50 shrink-0">
+          <ListTree className="size-4 text-zinc-500" />
+          <span className="text-sm font-semibold">执行历史</span>
+          <span className="ml-auto text-xs text-zinc-400 bg-zinc-200 dark:bg-zinc-800 px-1.5 py-0.5 rounded">{data.jobs.length}</span>
         </div>
-        <div className="flex-1 space-y-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
           {data.jobs.map((job) => {
             const isSelected = selectedJob?.id === job.id
             return (
               <button
                 key={job.id}
                 onClick={() => setSelectedJobId(job.id)}
-                  className={`flex w-full items-start gap-3 rounded-md p-3 text-left transition-colors ${
-                  isSelected ? "bg-foreground text-background" : "hover:bg-muted"
+                className={`w-full flex items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors ${
+                  isSelected 
+                    ? "bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900 shadow-sm" 
+                    : "hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50"
                 }`}
               >
-                <StatusIcon status={job.status} className="size-4 mt-0.5 shrink-0" />
+                <StatusIcon status={job.status} className={`size-4 mt-0.5 shrink-0 ${isSelected && job.status !== 'running' ? 'opacity-90' : ''}`} />
                 <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center justify-between gap-3">
-                    <span className="font-medium text-sm">{formatJobType(job.type)}</span>
-                    <span className={`shrink-0 text-[10px] ${isSelected ? "text-background/60" : "text-muted-foreground"}`}>
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    <span className={`font-medium text-sm truncate ${isSelected ? '' : 'text-zinc-900 dark:text-zinc-100'}`}>
+                      {formatJobType(job.type)}
+                    </span>
+                    <span className={`shrink-0 text-[10px] tabular-nums ${isSelected ? "text-zinc-400 dark:text-zinc-500" : "text-zinc-400"}`}>
                       {new Date(job.createdAt).toLocaleTimeString()}
                     </span>
                   </div>
-                  <div className={`truncate text-xs ${isSelected ? "text-background/70" : "text-muted-foreground"}`} title={job.repoName || "全局任务"}>
+                  <div className={`truncate text-[11px] ${isSelected ? "text-zinc-300 dark:text-zinc-600" : "text-zinc-500"}`} title={job.repoName || "全局任务"}>
                     {job.repoName || "全局任务"}
                   </div>
                 </div>
@@ -96,18 +101,18 @@ export function TasksView({ data }: { data: DashboardData }) {
       </div>
 
       {/* 右侧终端日志 */}
-      <div className="flex min-h-[420px] flex-col overflow-hidden rounded-lg border border-black bg-[#0c0c0c] shadow-sm">
+      <div className="flex-1 flex flex-col bg-[#09090b] min-h-0">
         {selectedJob ? (
           <>
-            <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#161616] px-4 py-3 text-white/80">
-              <div className="flex items-center gap-2">
-                <Terminal className="size-4" />
-                <span className="text-sm font-medium">
-                  {formatJobType(selectedJob.type)} - {selectedJob.repoName || "全局任务"}
+            <div className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#121214] px-5 py-3 text-zinc-300">
+              <div className="flex items-center gap-3">
+                <Terminal className="size-4 opacity-50" />
+                <span className="text-sm font-mono tracking-wide">
+                  {formatJobType(selectedJob.type)} <span className="opacity-40 ml-1">/</span> <span className="text-white font-semibold ml-1">{selectedJob.repoName || "全局任务"}</span>
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                <span className={`text-[11px] px-2 py-0.5 font-medium rounded-sm border ${
                   selectedJob.status === "succeeded" ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" :
                   selectedJob.status === "failed" ? "border-rose-500/30 text-rose-400 bg-rose-500/10" :
                   selectedJob.status === "running" ? "border-blue-500/30 text-blue-400 bg-blue-500/10" :
@@ -117,29 +122,29 @@ export function TasksView({ data }: { data: DashboardData }) {
                 </span>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 font-mono text-[12px] leading-6">
+            <div className="flex-1 overflow-y-auto p-5 font-mono text-[13px] leading-relaxed">
               {selectedJob.logs.length === 0 ? (
-                <div className="text-white/30 italic">等待日志输出...</div>
+                <div className="text-white/20 italic">等待日志输出...</div>
               ) : (
-                <div className="space-y-1">
+                <div className="space-y-1.5">
                   {selectedJob.logs.map((log, i) => {
-                    let colorClass = "text-white/80"
+                    let colorClass = "text-zinc-300"
                     if (log.level === "error") colorClass = "text-rose-400"
                     
                     return (
                       <div key={i} className={`whitespace-pre-wrap break-all ${colorClass}`}>
-                        <span className="opacity-50 select-none mr-2">[{log.timestamp.split('T')[1] || log.timestamp}]</span>
+                        <span className="text-zinc-600 select-none mr-3 text-[11px]">[{log.timestamp.split('T')[1] || log.timestamp}]</span>
                         {log.message}
                       </div>
                     )
                   })}
-                  <div ref={logsEndRef} />
+                  <div ref={logsEndRef} className="h-4" />
                 </div>
               )}
             </div>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-white/30">
+          <div className="flex-1 flex items-center justify-center text-white/20 text-sm">
             未选择任务
           </div>
         )}

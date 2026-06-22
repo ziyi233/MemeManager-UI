@@ -1,21 +1,13 @@
 "use client"
 
 import { Fragment, useState } from "react"
-import { AlertTriangle, GitBranch, Plus, Trash2 } from "lucide-react"
+import { AlertTriangle, Plus, Trash2, GitBranch, RefreshCw, Power, FolderArchive } from "lucide-react"
 
 import type { DashboardData, ManagedRepo } from "@/lib/meme-manager"
 import type { FlashMessage } from "./dashboard-shell"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
 
 type RepoTone = "success" | "pending" | "danger"
 
@@ -27,33 +19,28 @@ function getRepoTone(status: ManagedRepo["status"]): RepoTone {
 
 function getRepoStatusLabel(status: ManagedRepo["status"]) {
   switch (status) {
-    case "ready":
-      return "已同步"
-    case "error":
-      return "异常"
-    case "syncing":
-      return "同步中"
-    case "deleting":
-      return "删除中"
-    default:
-      return "未同步"
+    case "ready": return "已同步"
+    case "error": return "异常"
+    case "syncing": return "同步中"
+    case "deleting": return "删除中"
+    default: return "未同步"
   }
 }
 
 function formatDetail(repo: ManagedRepo) {
-  if (!repo.enabled) return "已停用，不会写入共享 meme 目录"
+  if (!repo.enabled) return "已停用，不写入共享目录"
   if (repo.status === "error") return repo.lastError || repo.statusMessage || "同步失败"
-  if (repo.status === "deleting") return repo.statusMessage || "正在删除仓库"
-  if (repo.status === "syncing") return repo.statusMessage || "正在同步仓库"
-  if (repo.status === "unsynced") return "已添加但未同步，不占用共享 meme 目录"
+  if (repo.status === "deleting") return repo.statusMessage || "正在删除"
+  if (repo.status === "syncing") return repo.statusMessage || "正在同步"
+  if (repo.status === "unsynced") return "已添加但未同步"
   return repo.statusMessage || "已同步"
 }
 
 function formatConflict(repo: ManagedRepo, conflict: ManagedRepo["conflicts"][number]) {
   if (conflict.ownerRepoId === repo.id) {
-    return `${conflict.memeName} 已由当前仓库占用，与 ${conflict.conflictingRepoName} 重名`
+    return `${conflict.memeName} (已有，与 ${conflict.conflictingRepoName} 冲突)`
   }
-  return `${conflict.memeName} 与 ${conflict.ownerRepoName} 重名，当前未写入共享目录`
+  return `${conflict.memeName} (与 ${conflict.ownerRepoName} 冲突)`
 }
 
 interface RepositoriesViewProps {
@@ -93,7 +80,7 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
         }),
       })
       await refreshNow()
-      setFlash({ type: "success", text: "仓库已添加，当前为未同步状态" })
+      setFlash({ type: "success", text: "仓库添加成功，当前为未同步状态" })
       setShowAddForm(false)
       ;(event.target as HTMLFormElement).reset()
     } catch (error) {
@@ -109,7 +96,7 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
       await fetchJson(`/api/repos/${repoId}/sync`, { method: "POST", body: JSON.stringify({}) })
       await refreshNow()
     } catch (error) {
-      setFlash({ type: "error", text: error instanceof Error ? error.message : "仓库同步失败" })
+      setFlash({ type: "error", text: error instanceof Error ? error.message : "同步失败" })
     } finally {
       setPending(repoId)
     }
@@ -124,7 +111,7 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
       })
       await refreshNow()
     } catch (error) {
-      setFlash({ type: "error", text: error instanceof Error ? error.message : "更新仓库状态失败" })
+      setFlash({ type: "error", text: error instanceof Error ? error.message : "状态更新失败" })
     } finally {
       setPending(repoId)
     }
@@ -139,7 +126,7 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
       })
       await refreshNow()
     } catch (error) {
-      setFlash({ type: "error", text: error instanceof Error ? error.message : "更新 Meme Root 失败" })
+      setFlash({ type: "error", text: error instanceof Error ? error.message : "保存配置失败" })
     } finally {
       setPending(repoId)
     }
@@ -152,186 +139,163 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
       await fetchJson(`/api/repos/${repoId}`, { method: "DELETE" })
       await refreshNow()
     } catch (error) {
-      setFlash({ type: "error", text: error instanceof Error ? error.message : "移除仓库失败" })
+      setFlash({ type: "error", text: error instanceof Error ? error.message : "移除失败" })
       setPending(repoId)
     }
   }
 
-  const statusClassName: Record<RepoTone, string> = {
-    success: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    pending: "border-amber-200 bg-amber-50 text-amber-700",
-    danger: "border-rose-200 bg-rose-50 text-rose-700",
-  }
-
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold tracking-tight">仓库列表</h2>
-          <p className="text-sm text-muted-foreground mt-1">
-            共 {data.repos.length} 个，{data.summary.linkedMemeCount} 个已共享
-            {data.summary.conflictCount ? `，${data.summary.conflictCount} 处冲突` : ""}
+          <p className="text-sm text-zinc-500 mt-1">
+            {data.repos.length} 个受管仓库，{data.summary.linkedMemeCount} 个已共享表情
+            {data.summary.conflictCount > 0 && <span className="text-amber-600 ml-1">· {data.summary.conflictCount} 处冲突</span>}
           </p>
         </div>
-        <Button onClick={() => setShowAddForm(!showAddForm)}>
+        <Button onClick={() => setShowAddForm(!showAddForm)} className="shrink-0 bg-zinc-900 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900">
           <Plus className="mr-2 size-4" />
           添加仓库
         </Button>
       </div>
 
       {showAddForm && (
-        <div className="rounded-lg border bg-card p-6 shadow-sm">
-          <h3 className="text-lg font-medium mb-4">添加新仓库</h3>
-          <form className="grid gap-4 md:grid-cols-4 md:items-end" onSubmit={handleAddRepository}>
+        <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/50 p-6 shadow-sm overflow-hidden relative">
+          <div className="absolute top-0 left-0 w-1 h-full bg-zinc-900 dark:bg-zinc-100" />
+          <h3 className="text-base font-semibold mb-5">注册新仓库</h3>
+          <form className="grid gap-5 md:grid-cols-4 md:items-end" onSubmit={handleAddRepository}>
             <div className="grid gap-2 md:col-span-2">
-              <label className="text-sm font-medium text-muted-foreground">仓库地址</label>
-              <Input name="repositoryUrl" type="url" placeholder="https://github.com/example/memes.git" required />
+              <label className="text-[13px] font-medium text-zinc-700 dark:text-zinc-300">仓库 URL</label>
+              <Input name="repositoryUrl" type="url" placeholder="https://github.com/example/memes.git" required className="h-9" />
             </div>
             <div className="grid gap-2">
-              <label className="text-sm font-medium text-muted-foreground">分支</label>
-              <Input name="branch" type="text" placeholder="main" defaultValue="main" />
+              <label className="text-[13px] font-medium text-zinc-700 dark:text-zinc-300">Git 分支</label>
+              <Input name="branch" type="text" placeholder="main" defaultValue="main" className="h-9 font-mono text-sm" />
             </div>
             <div className="grid gap-2 md:col-span-2">
-              <label className="text-sm font-medium text-muted-foreground">表情根目录</label>
-              <Input name="customMemeRoot" type="text" placeholder="留空时自动识别，如 memes / meme / emoji" />
+              <label className="text-[13px] font-medium text-zinc-700 dark:text-zinc-300">表情提取目录</label>
+              <Input name="customMemeRoot" type="text" placeholder="留空时自动识别" className="h-9 font-mono text-sm" />
             </div>
-            <div className="md:col-span-1 flex gap-2">
-              <Button type="button" variant="outline" className="w-full" onClick={() => setShowAddForm(false)}>取消</Button>
-              <Button type="submit" className="w-full" disabled={isSubmitting}>
-                {isSubmitting ? "添加中..." : "确认添加"}
+            <div className="md:col-span-2 flex justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={() => setShowAddForm(false)}>取消</Button>
+              <Button type="submit" disabled={isSubmitting} className="min-w-[100px]">
+                {isSubmitting ? "注册中..." : "确认注册"}
               </Button>
             </div>
           </form>
         </div>
       )}
 
-      <div className="rounded-md border bg-card shadow-sm overflow-x-auto">
-        <Table className="min-w-[900px]">
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[30%]">仓库</TableHead>
-              <TableHead className="w-[20%]">状态</TableHead>
-              <TableHead className="w-[15%]">统计</TableHead>
-              <TableHead className="w-[20%]">根目录</TableHead>
-              <TableHead className="w-[15%] text-right">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.repos.length === 0 && (
-              <TableRow>
-                <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                  还没有添加任何仓库
-                </TableCell>
-              </TableRow>
-            )}
-            {data.repos.map((repo) => {
-              const localPending = pendingRepoIds[repo.id]
-              const busy = repo.status === "syncing" || repo.status === "deleting" || Boolean(localPending)
-              const conflicts = repo.conflicts || []
-              const tone = getRepoTone(repo.status)
+      <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 shadow-sm overflow-hidden flex flex-col divide-y divide-zinc-200 dark:divide-zinc-800">
+        {data.repos.length === 0 ? (
+          <div className="px-6 py-12 text-center text-zinc-500 text-sm">
+            没有任何仓库
+          </div>
+        ) : (
+          data.repos.map((repo) => {
+            const localPending = pendingRepoIds[repo.id]
+            const busy = repo.status === "syncing" || repo.status === "deleting" || Boolean(localPending)
+            const conflicts = repo.conflicts || []
+            const tone = getRepoTone(repo.status)
 
-              return (
-                <Fragment key={repo.id}>
-                  <TableRow className="align-top">
-                    <TableCell className="py-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium truncate max-w-[200px]" title={repo.name}>{repo.name}</span>
-                        {!repo.enabled && <Badge variant="secondary" className="text-[10px] px-1.5 h-4">已停用</Badge>}
-                      </div>
-                      <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
-                        <GitBranch className="size-3 shrink-0" />
-                        <span className="truncate max-w-[200px]" title={repo.url}>{repo.url}</span>
-                      </div>
-                      <div className="mt-1 text-[11px] text-muted-foreground">
-                        分支: {repo.branch} {repo.lastCommitHash && `(${repo.lastCommitHash.slice(0, 7)})`}
-                      </div>
-                    </TableCell>
-
-                    <TableCell className="py-4">
-                      <Badge variant="outline" className={`font-normal ${statusClassName[tone]}`}>
-                        {getRepoStatusLabel(repo.status)}
-                      </Badge>
-                      <p className="mt-2 text-xs text-muted-foreground line-clamp-2" title={formatDetail(repo)}>
-                        {formatDetail(repo)}
-                      </p>
-                      {repo.lastSyncedAt && (
-                        <p className="mt-1 text-[10px] text-muted-foreground">同步于: {repo.lastSyncedAt}</p>
-                      )}
-                    </TableCell>
-
-                    <TableCell className="py-4">
-                      <div className="flex gap-3">
-                        <div className="text-center">
-                          <div className="text-sm font-semibold">{repo.memeCount}</div>
-                          <div className="text-[10px] text-muted-foreground">总数</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-sm font-semibold">{repo.linkedMemeCount}</div>
-                          <div className="text-[10px] text-muted-foreground">已共享</div>
-                        </div>
-                        <div className="text-center">
-                          <div className={`text-sm font-semibold ${repo.conflictCount ? "text-amber-600" : ""}`}>
-                            {repo.conflictCount}
-                          </div>
-                          <div className="text-[10px] text-muted-foreground">冲突</div>
-                        </div>
-                      </div>
-                    </TableCell>
-
-                    <TableCell className="py-4">
-                      <form
-                        className="flex items-center gap-2"
-                        onSubmit={(e) => {
-                          e.preventDefault()
-                          const fd = new FormData(e.currentTarget)
-                          void handleSaveRoot(repo.id, String(fd.get("customMemeRoot") || ""))
-                        }}
-                      >
-                        <Input
-                          name="customMemeRoot"
-                          defaultValue={repo.customMemeRoot || repo.memeRoot || ""}
-                          placeholder="自动识别"
-                          className="h-8 text-xs"
-                        />
-                        <Button type="submit" variant="secondary" size="sm" disabled={busy} className="h-8 px-2">
-                          {localPending === "saving" ? "保存中" : "保存"}
-                        </Button>
-                      </form>
-                    </TableCell>
-
-                    <TableCell className="py-4 text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={() => void handleSync(repo.id)} disabled={busy} className="h-8 px-2">
-                          {localPending === "syncing" ? "同步中" : "同步"}
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={() => void handleToggle(repo.id, !repo.enabled)} disabled={busy} className="h-8 px-2">
-                          {localPending === "toggling" ? "..." : repo.enabled ? "停用" : "启用"}
-                        </Button>
-                        <Button type="button" variant="ghost" size="icon" onClick={() => void handleRemove(repo.id)} disabled={busy} className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
+            return (
+              <div key={repo.id} className={`flex flex-col lg:flex-row gap-6 p-5 lg:items-center bg-white dark:bg-zinc-950 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 transition-colors ${!repo.enabled ? "opacity-70 grayscale-[0.2]" : ""}`}>
+                {/* Left: Identity */}
+                <div className="flex-1 min-w-0 flex flex-col gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-semibold text-[15px] truncate max-w-[250px]" title={repo.name}>{repo.name}</span>
+                    <Badge variant="secondary" className="h-5 px-1.5 font-mono text-[10px] tracking-wide rounded-sm font-medium bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300">
+                      {repo.branch}
+                    </Badge>
+                    {!repo.enabled && (
+                      <Badge variant="outline" className="h-5 px-1.5 text-[10px] rounded-sm text-zinc-500">已停用</Badge>
+                    )}
+                    {tone === "danger" && (
+                      <Badge variant="destructive" className="h-5 px-1.5 text-[10px] rounded-sm bg-rose-100 text-rose-700 border-rose-200 dark:bg-rose-900/30 dark:text-rose-400 dark:border-rose-800">异常</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <GitBranch className="size-3.5 shrink-0 opacity-70" />
+                      <span className="truncate max-w-[300px] text-[13px] font-mono" title={repo.url}>{repo.url}</span>
+                    </div>
+                  </div>
+                  <div className="text-[12px] text-zinc-500 mt-1 flex items-center gap-2">
+                    <span className="flex items-center gap-1.5">
+                      <span className={`size-2 rounded-full ${tone === "success" ? "bg-emerald-500" : tone === "pending" ? "bg-amber-400" : "bg-rose-500"}`} />
+                      {formatDetail(repo)}
+                    </span>
+                    {repo.lastCommitHash && (
+                      <>
+                        <span className="opacity-40">•</span>
+                        <span className="font-mono">{repo.lastCommitHash.slice(0, 7)}</span>
+                      </>
+                    )}
+                  </div>
+                  
                   {conflicts.length > 0 && (
-                    <TableRow className="bg-amber-50/50 hover:bg-amber-50/50">
-                      <TableCell colSpan={5} className="py-2 text-xs text-amber-800">
-                        <div className="flex items-start gap-2">
-                          <AlertTriangle className="size-4 shrink-0 mt-0.5" />
-                          <div>
-                            <span className="font-semibold">重名冲突：</span>
-                            {conflicts.slice(0, 3).map((c) => formatConflict(repo, c)).join("；")}
-                            {conflicts.length > 3 && ` 等 ${conflicts.length} 处冲突`}
-                          </div>
-                        </div>
-                      </TableCell>
-                    </TableRow>
+                    <div className="text-[11px] text-amber-600 dark:text-amber-500 mt-1 flex items-start gap-1">
+                      <AlertTriangle className="size-3 shrink-0 mt-0.5" />
+                      <span>{conflicts.length} 处冲突 (如: {conflicts.slice(0, 2).map((c) => formatConflict(repo, c)).join(", ")})</span>
+                    </div>
                   )}
-                </Fragment>
-              )
-            })}
-          </TableBody>
-        </Table>
+                </div>
+
+                {/* Middle: Stats & Config */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-6 lg:gap-8 shrink-0">
+                  <div className="flex gap-4 sm:gap-6">
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider mb-0.5">Total</span>
+                      <span className="text-sm font-semibold">{repo.memeCount}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-[11px] font-medium text-zinc-400 uppercase tracking-wider mb-0.5">Shared</span>
+                      <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-500">{repo.linkedMemeCount}</span>
+                    </div>
+                  </div>
+
+                  <form 
+                    className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto"
+                    onSubmit={(e) => {
+                      e.preventDefault()
+                      const fd = new FormData(e.currentTarget)
+                      void handleSaveRoot(repo.id, String(fd.get("customMemeRoot") || ""))
+                    }}
+                  >
+                    <div className="relative">
+                      <FolderArchive className="absolute left-2.5 top-2.5 size-3.5 text-zinc-400" />
+                      <Input
+                        name="customMemeRoot"
+                        defaultValue={repo.customMemeRoot || repo.memeRoot || ""}
+                        placeholder="根目录"
+                        className="h-8 pl-8 text-xs font-mono w-[140px] focus:w-[180px] transition-all bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 focus:bg-white"
+                      />
+                    </div>
+                    <Button type="submit" variant="secondary" size="sm" disabled={busy} className="h-8 text-xs shrink-0 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700">
+                      {localPending === "saving" ? "保存中" : "保存路径"}
+                    </Button>
+                  </form>
+                </div>
+
+                {/* Right: Actions */}
+                <div className="flex items-center justify-end gap-2 shrink-0 border-t lg:border-t-0 pt-4 lg:pt-0 mt-2 lg:mt-0 w-full lg:w-auto border-zinc-100 dark:border-zinc-800">
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleSync(repo.id)} disabled={busy} className="h-8 text-xs w-20">
+                    {localPending === "syncing" ? <RefreshCw className="size-3 animate-spin mr-1.5" /> : null}
+                    {localPending === "syncing" ? "同步中" : "同步"}
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleToggle(repo.id, !repo.enabled)} disabled={busy} className="h-8 text-xs w-20">
+                    <Power className={`size-3 mr-1.5 ${repo.enabled ? "text-rose-500" : "text-emerald-500"}`} />
+                    {repo.enabled ? "停用" : "启用"}
+                  </Button>
+                  <Button type="button" variant="ghost" size="icon" onClick={() => void handleRemove(repo.id)} disabled={busy} className="h-8 w-8 text-zinc-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50">
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              </div>
+            )
+          })
+        )}
       </div>
     </div>
   )
