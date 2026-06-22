@@ -14,8 +14,8 @@
 - 添加、启用、停用、移除扩展仓库
 - 单仓库同步、全部同步
 - 后台异步执行 `git clone` / `git pull`
-- 实时显示同步中、删除中、异常、已同步状态
-- 用 `JSON` 持久化配置和运行状态，不依赖数据库
+- 实时显示任务日志和 Git 输出
+- 用 `JSON` 持久化配置和任务记录；仓库状态从 `data/repos/` 和 Git 工作区实时感知
 
 ## 适用场景
 
@@ -49,7 +49,7 @@
 注意：
 
 - `meme_emoji` 和 `tudou-meme` 之间存在目录重名，启用并同步后可能触发冲突
-- `MemeManager UI` 会阻止把两个同名表情目录同时汇总进共享目录
+- `MemeManager UI` 会按仓库顺序链接先出现的表情目录，并在界面中展示后续重名冲突
 
 ## 本地开发
 
@@ -80,7 +80,7 @@ npm run start
 
 - `data/example-config.json`：预置仓库模板
 - `data/config/repos.json`：实际仓库配置
-- `data/state/repos-state.json`：运行状态
+- `data/state/jobs.json`：任务记录和最近日志
 - `data/repos/`：clone 下来的仓库
 - `data/managed/memes/`：汇总后的共享目录
 

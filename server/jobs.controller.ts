@@ -1,13 +1,18 @@
-import { Controller, Get, MessageEvent, Sse } from "@nestjs/common"
+import { Controller, Get, MessageEvent, Param, Post, Sse } from "@nestjs/common"
 import { Observable } from "rxjs"
 
-import { listJobs, subscribeJobEvents } from "../src/lib/meme-manager"
+import { cancelJob, listJobs, subscribeJobEvents } from "../src/lib/meme-manager"
 
 @Controller()
 export class JobsController {
   @Get("jobs")
   async getJobs() {
     return { jobs: await listJobs() }
+  }
+
+  @Post("jobs/:jobId/cancel")
+  async cancelJob(@Param("jobId") jobId: string) {
+    return cancelJob(jobId)
   }
 
   @Sse("events")

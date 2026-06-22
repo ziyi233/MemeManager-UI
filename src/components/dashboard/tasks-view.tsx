@@ -1,12 +1,14 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { Terminal, CheckCircle2, XCircle, Clock, Loader2, ListTree } from "lucide-react"
+import { Terminal, CheckCircle2, XCircle, Clock, Loader2, ListTree, Square } from "lucide-react"
 import type { DashboardData, Job } from "@/lib/meme-manager"
+import { Button } from "@/components/ui/button"
 
 function getJobTone(status: Job["status"]) {
   if (status === "succeeded") return "success"
   if (status === "failed") return "danger"
+  if (status === "cancelled") return "danger"
   if (status === "running") return "running"
   return "pending"
 }
@@ -16,6 +18,7 @@ function getJobStatusLabel(status: Job["status"]) {
     case "running": return "执行中"
     case "succeeded": return "成功"
     case "failed": return "失败"
+    case "cancelled": return "已停止"
     default: return "排队中"
   }
 }
@@ -32,16 +35,36 @@ function formatJobType(type: Job["type"]) {
 function StatusIcon({ status, className }: { status: Job["status"], className?: string }) {
   if (status === "succeeded") return <CheckCircle2 className={`text-emerald-500 ${className}`} />
   if (status === "failed") return <XCircle className={`text-rose-500 ${className}`} />
+  if (status === "cancelled") return <Square className={`text-zinc-500 ${className}`} />
   if (status === "running") return <Loader2 className={`text-blue-500 animate-spin ${className}`} />
   return <Clock className={`text-amber-500 ${className}`} />
 }
 
 export function TasksView({ data }: { data: DashboardData }) {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(data.jobs[0]?.id || null)
+  const [stoppingJobId, setStoppingJobId] = useState<string | null>(null)
   const logsEndRef = useRef<HTMLDivElement>(null)
 
   // Auto-scroll logic if the job is running
   const selectedJob = data.jobs.find((job) => job.id === selectedJobId) || data.jobs[0] || null
+  const selectedJobCanStop = selectedJob?.status === "running" || selectedJob?.status === "pending"
+
+  async function handleStopJob(jobId: string) {
+    setStoppingJobId(jobId)
+    try {
+      const response = await fetch(`/api/jobs/${jobId}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      })
+      if (!response.ok) {
+        const data = (await response.json().catch(() => ({}))) as { error?: string }
+        throw new Error(data.error || "停止任务失败")
+      }
+    } finally {
+      setStoppingJobId(null)
+    }
+  }
 
   useEffect(() => {
     if (selectedJob && selectedJob.status === "running") {
@@ -116,10 +139,24 @@ export function TasksView({ data }: { data: DashboardData }) {
                   selectedJob.status === "succeeded" ? "border-emerald-500/30 text-emerald-400 bg-emerald-500/10" :
                   selectedJob.status === "failed" ? "border-rose-500/30 text-rose-400 bg-rose-500/10" :
                   selectedJob.status === "running" ? "border-blue-500/30 text-blue-400 bg-blue-500/10" :
+                  selectedJob.status === "cancelled" ? "border-white/20 text-zinc-400 bg-white/5" :
                   "border-white/20 text-white/60 bg-white/5"
                 }`}>
                   {getJobStatusLabel(selectedJob.status)}
                 </span>
+                {selectedJobCanStop ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={stoppingJobId === selectedJob.id}
+                    onClick={() => void handleStopJob(selectedJob.id)}
+                    className="h-7 border-white/15 bg-white/5 px-2 text-[11px] text-white/80 hover:bg-white/10 hover:text-white"
+                  >
+                    <Square className="mr-1.5 size-3" />
+                    {stoppingJobId === selectedJob.id ? "停止中" : "停止"}
+                  </Button>
+                ) : null}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-5 font-mono text-[13px] leading-relaxed">

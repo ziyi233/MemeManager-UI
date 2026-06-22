@@ -71,7 +71,7 @@ export type MemeConflict = {
   conflictingRepoName: string
 }
 
-export type JobStatus = "pending" | "running" | "succeeded" | "failed"
+export type JobStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled"
 
 export type Job = {
   id: string
@@ -93,16 +93,21 @@ export type JobEvent = {
   log?: RepoLogEntry
 }
 
+type RepoScanEntry = ManagedRepo & {
+  memeNames: string[]
+  memeRootPath: string | null
+}
+
+type RepoScanOptions = {
+  includeActiveJobs?: boolean
+}
+
 type SyncTaskResult = SyncResult & {
   logs: string[]
 }
 
 type RepoConfigStore = {
   repos: RepoConfig[]
-}
-
-type RepoStateStore = {
-  states: RepoState[]
 }
 
 type JobStore = {
@@ -131,6 +136,8 @@ type ReloadResult = {
 const MEME_ROOT_CANDIDATES = ["memes", "meme", "emoji"]
 
 const repoLocks = new Map<string, Promise<void>>()
+const activeRepoJobs = new Map<string, string>()
+const activeJobControllers = new Map<string, AbortController>()
 let stateWriteLock: Promise<void> = Promise.resolve()
 let rebuildLock: Promise<void> = Promise.resolve()
 
@@ -153,10 +160,6 @@ function getStateDir() {
 
 function getConfigFile() {
   return path.join(getConfigDir(), "repos.json")
-}
-
-function getStateFile() {
-  return path.join(getStateDir(), "repos-state.json")
 }
 
 function getJobsFile() {
@@ -281,26 +284,6 @@ function createRepoState(repoId: string): RepoState {
   }
 }
 
-function normalizeRepoState(state: RepoState): RepoState {
-  return {
-    ...state,
-    statusMessage: state.statusMessage ?? null,
-    memeRoot: state.memeRoot ?? null,
-    lastSyncStartedAt: state.lastSyncStartedAt ?? null,
-    lastSyncedAt: state.lastSyncedAt ?? null,
-    lastSyncFinishedAt: state.lastSyncFinishedAt ?? null,
-    lastCommitHash: state.lastCommitHash ?? null,
-    lastError: state.lastError ?? null,
-    deleteStartedAt: state.deleteStartedAt ?? null,
-    lastJobId: state.lastJobId ?? null,
-    memeCount: Number.isFinite(state.memeCount) ? state.memeCount : 0,
-    linkedMemeCount: Number.isFinite(state.linkedMemeCount) ? state.linkedMemeCount : 0,
-    conflictCount: Number.isFinite(state.conflictCount) ? state.conflictCount : 0,
-    conflicts: Array.isArray(state.conflicts) ? state.conflicts : [],
-    recentLogs: Array.isArray(state.recentLogs) ? state.recentLogs : [],
-  }
-}
-
 function normalizeJob(job: Job): Job {
   return {
     ...job,
@@ -414,9 +397,11 @@ async function seedDefaultDataIfNeeded() {
   await ensureExampleConfig()
 
   const configPath = getConfigFile()
-  const statePath = getStateFile()
 
-  if ((await pathExists(configPath)) && (await pathExists(statePath))) {
+  if (await pathExists(configPath)) {
+    if (!(await pathExists(getJobsFile()))) {
+      await writeJsonFile(getJobsFile(), { jobs: [] })
+    }
     return
   }
 
@@ -437,14 +422,8 @@ async function seedDefaultDataIfNeeded() {
     })
   })
 
-  const states = repos.map((repo) => createRepoState(repo.id))
-
   if (!(await pathExists(configPath))) {
     await writeJsonFile(configPath, { repos })
-  }
-
-  if (!(await pathExists(statePath))) {
-    await writeJsonFile(statePath, { states })
   }
 
   if (!(await pathExists(getJobsFile()))) {
@@ -457,14 +436,6 @@ async function readConfigStore(): Promise<RepoConfigStore> {
   const parsed = await readJsonFile<RepoConfigStore>(getConfigFile(), { repos: [] })
   return {
     repos: Array.isArray(parsed.repos) ? parsed.repos : [],
-  }
-}
-
-async function readStateStore(): Promise<RepoStateStore> {
-  await seedDefaultDataIfNeeded()
-  const parsed = await readJsonFile<RepoStateStore>(getStateFile(), { states: [] })
-  return {
-    states: Array.isArray(parsed.states) ? parsed.states.map((state) => normalizeRepoState(state)) : [],
   }
 }
 
@@ -481,81 +452,11 @@ async function writeConfigStore(store: RepoConfigStore) {
   await writeJsonFile(getConfigFile(), store)
 }
 
-async function writeStateStore(store: RepoStateStore) {
-  await ensureStorage()
-  await withWriteLock("state", async () => {
-    await writeJsonFile(getStateFile(), store)
-  })
-}
-
 async function writeJobStore(store: JobStore) {
   await ensureStorage()
   await withWriteLock("state", async () => {
     await writeJsonFile(getJobsFile(), store)
   })
-}
-
-async function getStores() {
-  const [configStore, stateStore] = await Promise.all([readConfigStore(), readStateStore()])
-  const stateMap = new Map(stateStore.states.map((state) => [state.repoId, state]))
-
-  const states = configStore.repos.map((repo) => stateMap.get(repo.id) || createRepoState(repo.id))
-  if (states.length !== stateStore.states.length) {
-    await writeStateStore({ states })
-  }
-
-  return {
-    configStore,
-    stateStore: { states },
-  }
-}
-
-async function saveStatePatch(repoId: string, patch: Partial<RepoState>) {
-  const stateStore = await readStateStore()
-  const index = stateStore.states.findIndex((state) => state.repoId === repoId)
-
-  if (index === -1) {
-    stateStore.states.push({
-      ...createRepoState(repoId),
-      ...patch,
-      repoId,
-    })
-  } else {
-    stateStore.states[index] = normalizeRepoState({
-      ...stateStore.states[index],
-      ...patch,
-      repoId,
-    })
-  }
-
-  await writeStateStore(stateStore)
-}
-
-async function pushRepoLog(repoId: string, level: "info" | "error", message: string) {
-  const entry: RepoLogEntry = {
-    timestamp: nowIso(),
-    level,
-    message,
-  }
-
-  const stateStore = await readStateStore()
-  const index = stateStore.states.findIndex((state) => state.repoId === repoId)
-  if (index === -1) {
-    stateStore.states.push({
-      ...createRepoState(repoId),
-      recentLogs: [entry],
-      repoId,
-    })
-  } else {
-    const logs = [...(stateStore.states[index].recentLogs || []), entry].slice(-50)
-    stateStore.states[index] = normalizeRepoState({
-      ...stateStore.states[index],
-      recentLogs: logs,
-      repoId,
-    })
-  }
-
-  await writeStateStore(stateStore)
 }
 
 async function createJob(input: Pick<Job, "type" | "repoId" | "repoName" | "message">) {
@@ -580,9 +481,6 @@ async function createJob(input: Pick<Job, "type" | "repoId" | "repoName" | "mess
     type: "job_created",
     job,
   } satisfies JobEvent)
-  if (job.repoId) {
-    await saveStatePatch(job.repoId, { lastJobId: job.id })
-  }
   return job
 }
 
@@ -627,9 +525,6 @@ async function appendJobLog(jobId: string, level: "info" | "error", message: str
     job: jobStore.jobs[index],
     log: entry,
   } satisfies JobEvent)
-  if (job.repoId) {
-    await pushRepoLog(job.repoId, level, message)
-  }
 }
 
 async function startJob(jobId: string, message: string) {
@@ -669,6 +564,7 @@ async function runGitStream(
   args: string[],
   cwd: string | undefined,
   onLine: (line: string, level: "info" | "error") => Promise<void>,
+  signal?: AbortSignal,
 ) {
   await onLine(`$ git ${args.join(" ")}`, "info")
 
@@ -677,6 +573,18 @@ async function runGitStream(
       cwd,
       windowsHide: true,
     })
+
+    if (signal?.aborted) {
+      child.kill()
+      reject(new Error("任务已取消"))
+      return
+    }
+
+    const abort = () => {
+      child.kill()
+      reject(new Error("任务已取消"))
+    }
+    signal?.addEventListener("abort", abort, { once: true })
 
     let stdoutBuffer = ""
     let stderrBuffer = ""
@@ -710,6 +618,7 @@ async function runGitStream(
 
     child.on("error", reject)
     child.on("close", async (code) => {
+      signal?.removeEventListener("abort", abort)
       if (stdoutBuffer.trim()) {
         await onLine(stdoutBuffer.trim(), "info")
       }
@@ -719,6 +628,11 @@ async function runGitStream(
 
       if (code === 0) {
         resolve()
+        return
+      }
+
+      if (signal?.aborted) {
+        reject(new Error("任务已取消"))
         return
       }
 
@@ -733,6 +647,14 @@ async function readGitOutput(args: string[], cwd?: string) {
     windowsHide: true,
   })
   return result.stdout.trim()
+}
+
+async function readGitOutputSafe(args: string[], cwd?: string) {
+  try {
+    return await readGitOutput(args, cwd)
+  } catch {
+    return null
+  }
 }
 
 async function isMemeContainerDirectory(targetPath: string) {
@@ -810,12 +732,152 @@ function getRepoDirectory(repoId: string) {
   return path.join(getReposDir(), repoId)
 }
 
+async function scanRepoFromDisk(repo: RepoConfig): Promise<RepoScanEntry> {
+  const repoDir = getRepoDirectory(repo.id)
+  const baseState = createRepoState(repo.id)
+
+  if (!(await pathExists(repoDir))) {
+    return {
+      ...repo,
+      ...baseState,
+      status: "unsynced",
+      statusMessage: "本地仓库目录不存在，等待同步",
+      memeNames: [],
+      memeRootPath: null,
+    }
+  }
+
+  if (!(await isGitRepository(repoDir))) {
+    return {
+      ...repo,
+      ...baseState,
+      status: "error",
+      statusMessage: "本地目录存在，但不是 Git 仓库",
+      lastError: "本地目录存在，但没有 .git",
+      memeNames: [],
+      memeRootPath: null,
+    }
+  }
+
+  const [commitHash, branchName] = await Promise.all([
+    readGitOutputSafe(["rev-parse", "--short", "HEAD"], repoDir),
+    readGitOutputSafe(["branch", "--show-current"], repoDir),
+  ])
+
+  const detectedRoot = repo.customMemeRoot || (await detectMemeRoot(repoDir))
+  if (!detectedRoot) {
+    return {
+      ...repo,
+      ...baseState,
+      status: "error",
+      statusMessage: "未找到可加载的表情根目录",
+      lastCommitHash: commitHash,
+      lastError: "未找到包含 meme 插件的目录",
+      memeNames: [],
+      memeRootPath: null,
+    }
+  }
+
+  const memeRootPath = path.resolve(repoDir, detectedRoot)
+  if (!(await pathExists(memeRootPath))) {
+    return {
+      ...repo,
+      ...baseState,
+      status: "error",
+      statusMessage: `表情根目录不存在：${detectedRoot}`,
+      memeRoot: detectedRoot,
+      lastCommitHash: commitHash,
+      lastError: `表情根目录不存在：${detectedRoot}`,
+      memeNames: [],
+      memeRootPath: null,
+    }
+  }
+
+  const memeNames = await listMemeDirectoryNames(memeRootPath)
+  return {
+    ...repo,
+    ...baseState,
+    branch: branchName || repo.branch,
+    status: "ready",
+    statusMessage: repo.enabled ? "已从本地仓库感知" : "已停用，不写入共享目录",
+    memeRoot: detectedRoot,
+    lastCommitHash: commitHash,
+    memeCount: memeNames.length,
+    memeNames,
+    memeRootPath,
+  }
+}
+
+async function scanReposFromDisk(options: RepoScanOptions = {}) {
+  const configStore = await readConfigStore()
+  const scannedRepos = await Promise.all(configStore.repos.map((repo) => scanRepoFromDisk(repo)))
+  const linkedNames = new Map<string, { repoId: string; repoName: string }>()
+
+  for (const repo of scannedRepos) {
+    repo.linkedMemeCount = 0
+    repo.conflictCount = 0
+    repo.conflicts = []
+  }
+
+  for (const repo of scannedRepos) {
+    if (!repo.enabled || repo.status !== "ready") {
+      continue
+    }
+
+    for (const memeName of repo.memeNames) {
+      const existingOwner = linkedNames.get(memeName)
+      if (existingOwner) {
+        const conflict: MemeConflict = {
+          memeName,
+          ownerRepoId: existingOwner.repoId,
+          ownerRepoName: existingOwner.repoName,
+          conflictingRepoId: repo.id,
+          conflictingRepoName: repo.name,
+        }
+        scannedRepos.find((item) => item.id === existingOwner.repoId)?.conflicts.push(conflict)
+        repo.conflicts.push(conflict)
+        continue
+      }
+
+      linkedNames.set(memeName, { repoId: repo.id, repoName: repo.name })
+      repo.linkedMemeCount += 1
+    }
+  }
+
+  for (const repo of scannedRepos) {
+    repo.conflictCount = repo.conflicts.length
+  }
+
+  if (options.includeActiveJobs) {
+    const jobs = await readJobStore()
+    const activeJobs = jobs.jobs.filter((job) => job.status === "pending" || job.status === "running")
+    for (const job of activeJobs) {
+      if (!job.repoId) {
+        continue
+      }
+      const repo = scannedRepos.find((item) => item.id === job.repoId)
+      if (!repo) {
+        continue
+      }
+      repo.status = job.type === "remove" ? "deleting" : "syncing"
+      repo.statusMessage = job.message || (job.type === "remove" ? "正在删除仓库" : "正在执行任务")
+      repo.lastJobId = job.id
+    }
+  }
+
+  return scannedRepos
+}
+
 function formatError(error: unknown) {
   if (error instanceof Error) {
     return error.message
   }
 
   return "未知错误"
+}
+
+function isCancelledError(error: unknown) {
+  return error instanceof Error && error.message === "任务已取消"
 }
 
 async function triggerMemeApiReload(): Promise<ReloadResult> {
@@ -864,9 +926,7 @@ async function maybeAutoReloadMemeApi(jobId?: string) {
 }
 
 async function rebuildManagedMemes(jobId?: string) {
-  const { configStore, stateStore } = await getStores()
-  const stateMap = new Map(stateStore.states.map((state) => [state.repoId, state]))
-  const repoMap = new Map(configStore.repos.map((repo) => [repo.id, repo]))
+  const scannedRepos = await scanReposFromDisk()
 
   async function log(message: string) {
     if (jobId) {
@@ -879,99 +939,44 @@ async function rebuildManagedMemes(jobId?: string) {
     await log("清理旧的共享 meme 目录")
     await fs.rm(managedDir, { recursive: true, force: true })
     await ensureDir(managedDir)
-      await log("开始重建共享 meme 目录")
+    await log("开始重建共享 meme 目录")
 
     const linkedNames = new Map<string, { repoId: string; repoName: string }>()
-    const stats = new Map<
-      string,
-      {
-        memeCount: number
-        linkedMemeCount: number
-        conflicts: MemeConflict[]
-      }
-    >()
+    let conflictCount = 0
 
-    for (const repo of configStore.repos) {
-      stats.set(repo.id, {
-        memeCount: 0,
-        linkedMemeCount: 0,
-        conflicts: [],
-      })
-    }
-
-    for (const repo of configStore.repos) {
-      const state = stateMap.get(repo.id)
-      const repoStats = stats.get(repo.id)
-      if (!repoStats || state?.status !== "ready" || !state.memeRoot) {
+    for (const repo of scannedRepos) {
+      if (repo.status !== "ready" || !repo.memeRoot || !repo.memeRootPath) {
         continue
       }
 
-      const repoDir = getRepoDirectory(repo.id)
-      const memeRootPath = path.resolve(repoDir, state.memeRoot)
-      if (!(await pathExists(memeRootPath))) {
-        await log(`跳过仓库 ${repo.name}，根目录不存在：${state.memeRoot}`)
-        continue
-      }
-
-      await log(`扫描仓库 ${repo.name} 的表情目录：${state.memeRoot}`)
-
-      const memeNames = await listMemeDirectoryNames(memeRootPath)
-      repoStats.memeCount = memeNames.length
+      await log(`扫描仓库 ${repo.name} 的表情目录：${repo.memeRoot}`)
 
       if (!repo.enabled) {
-        await log(`仓库 ${repo.name} 已停用，统计 ${memeNames.length} 个表情目录但不写入共享目录`)
+        await log(`仓库 ${repo.name} 已停用，统计 ${repo.memeNames.length} 个表情目录但不写入共享目录`)
         continue
       }
 
-      for (const memeName of memeNames) {
-        const sourceDir = path.join(memeRootPath, memeName)
+      for (const memeName of repo.memeNames) {
+        const sourceDir = path.join(repo.memeRootPath, memeName)
 
         const existingOwner = linkedNames.get(memeName)
         if (existingOwner) {
-          const conflict: MemeConflict = {
-            memeName,
-            ownerRepoId: existingOwner.repoId,
-            ownerRepoName: existingOwner.repoName,
-            conflictingRepoId: repo.id,
-            conflictingRepoName: repo.name,
-          }
-
-          stats.get(existingOwner.repoId)?.conflicts.push(conflict)
-          repoStats.conflicts.push(conflict)
+          conflictCount += 1
           await log(`发现重名表情 ${memeName}: ${existingOwner.repoName} 已占用，跳过 ${repo.name}`)
           continue
         }
 
         linkedNames.set(memeName, { repoId: repo.id, repoName: repo.name })
         await createDirectoryLink(sourceDir, path.join(managedDir, memeName))
-        repoStats.linkedMemeCount += 1
         await log(`已链接表情目录 ${memeName} <- ${repo.name}`)
       }
     }
 
-    const nextStates = stateStore.states.map((state) => {
-      const repo = repoMap.get(state.repoId)
-      const repoStats = stats.get(state.repoId)
-      if (!repo || !repoStats) {
-        return normalizeRepoState(state)
-      }
-
-      return normalizeRepoState({
-        ...state,
-        memeCount: repoStats.memeCount,
-        linkedMemeCount: repoStats.linkedMemeCount,
-        conflictCount: repoStats.conflicts.length,
-        conflicts: repoStats.conflicts,
-      })
-    })
-    await writeStateStore({ states: nextStates })
-
-    const conflictCount = [...stats.values()].reduce((total, item) => total + item.conflicts.length, 0) / 2
     await log(`共享 meme 目录重建完成，共 ${linkedNames.size} 个表情目录，发现 ${conflictCount} 处冲突`)
   })
 }
 
-async function performSync(repo: RepoConfig, jobId?: string): Promise<SyncTaskResult> {
+async function performSync(repo: RepoConfig, jobId?: string, signal?: AbortSignal): Promise<SyncTaskResult> {
   const repoDir = getRepoDirectory(repo.id)
   const remoteUrl = resolveRepoGitUrl(repo.url)
   let beforeHash: string | null = null
@@ -985,6 +990,10 @@ async function performSync(repo: RepoConfig, jobId?: string): Promise<SyncTaskRe
   }
 
   async function streamGit(args: string[], cwd?: string) {
+    if (signal?.aborted) {
+      throw new Error("任务已取消")
+    }
+
     if (!jobId) {
       await runGit(args, cwd)
       return
@@ -992,7 +1001,7 @@ async function performSync(repo: RepoConfig, jobId?: string): Promise<SyncTaskRe
 
     await runGitStream(args, cwd, async (line, level) => {
       await appendJobLog(jobId, level, line)
-    })
+    }, signal)
   }
 
   if (await isGitRepository(repoDir)) {
@@ -1044,14 +1053,12 @@ function queueBackgroundTask(task: () => Promise<void>) {
   }, 0)
 }
 
-export async function listRepos() {
-  const { configStore, stateStore } = await getStores()
-  const stateMap = new Map(stateStore.states.map((state) => [state.repoId, state]))
+async function hasActiveRepoJob(repoId: string) {
+  return activeRepoJobs.has(repoId)
+}
 
-  return configStore.repos.map((repo) => ({
-    ...repo,
-    ...(stateMap.get(repo.id) || createRepoState(repo.id)),
-  }))
+export async function listRepos() {
+  return scanReposFromDisk({ includeActiveJobs: true })
 }
 
 export async function getManagerSummary() {
@@ -1076,7 +1083,21 @@ export async function getManagerSummary() {
 
 export async function getDashboardData() {
   const repos = await listRepos()
-  const summary = await getManagerSummary()
+  const totalMemeCount = repos.reduce((total, repo) => total + repo.memeCount, 0)
+  const linkedMemeCount = repos.reduce((total, repo) => total + repo.linkedMemeCount, 0)
+  const conflictCount = repos.reduce((total, repo) => total + repo.conflictCount, 0) / 2
+  const summary = {
+    count: repos.length,
+    totalMemeCount,
+    linkedMemeCount,
+    conflictCount,
+    dataRoot: getDataRoot(),
+    managedMemesDir: getManagedMemesDir(),
+    memeGeneratorMemeDirsEnv: JSON.stringify([getManagedMemesDir()]),
+    repoUrlPrefixConfigured: Boolean(getRepoUrlPrefix()),
+    reloadConfigured: isReloadConfigured(),
+    autoReloadEnabled: isAutoReloadEnabled(),
+  }
   const jobs = (await readJobStore()).jobs.slice(0, 12)
   return { repos, summary, jobs }
 }
@@ -1110,7 +1131,6 @@ export async function addRepo(input: {
 
   configStore.repos.unshift(repo)
   await writeConfigStore(configStore)
-  await saveStatePatch(repo.id, createRepoState(repo.id))
   await rebuildManagedMemes()
   return repo
 }
@@ -1122,9 +1142,7 @@ export async function requestRepoSync(repoId: string) {
     throw new Error("仓库不存在")
   }
 
-  const stateStore = await readStateStore()
-  const currentState = stateStore.states.find((state) => state.repoId === repoId) || createRepoState(repoId)
-  if (currentState.status === "syncing" || currentState.status === "deleting") {
+  if (await hasActiveRepoJob(repoId)) {
     return { queued: false }
   }
 
@@ -1134,44 +1152,32 @@ export async function requestRepoSync(repoId: string) {
     repoName: repo.name,
     message: "等待同步仓库",
   })
-
-  await saveStatePatch(repoId, {
-    status: "syncing",
-    statusMessage: "正在同步仓库",
-    lastSyncStartedAt: nowIso(),
-    lastError: null,
-    deleteStartedAt: null,
-    lastJobId: job.id,
-  })
+  const controller = new AbortController()
+  activeRepoJobs.set(repoId, job.id)
+  activeJobControllers.set(job.id, controller)
 
   queueBackgroundTask(async () => {
     await withRepoLock(repoId, async () => {
       try {
         await startJob(job.id, `开始同步仓库 ${repo.name}`)
-        const result = await performSync(repo, job.id)
-        const finishedAt = nowIso()
+        const result = await performSync(repo, job.id, controller.signal)
         await appendJobLog(job.id, "info", "重建共享 meme 目录")
-        await saveStatePatch(repoId, {
-          status: "ready",
-          statusMessage: result.updated ? `同步完成，已更新到 ${result.commitHash || "最新提交"}` : "已是最新版本",
-          memeRoot: result.memeRoot,
-          lastCommitHash: result.commitHash,
-          lastSyncedAt: finishedAt,
-          lastSyncFinishedAt: finishedAt,
-          lastError: null,
-          recentLogs: [],
-        })
+        await appendJobLog(job.id, "info", result.updated ? `同步完成，已更新到 ${result.commitHash || "最新提交"}` : "已是最新版本")
+        await appendJobLog(job.id, "info", `识别根目录：${result.memeRoot}`)
         await rebuildManagedMemes(job.id)
         await maybeAutoReloadMemeApi(job.id)
         await finishJob(job.id, "succeeded", `同步完成：${repo.name}`)
       } catch (error) {
-        await saveStatePatch(repoId, {
-          status: "error",
-          statusMessage: "同步失败",
-          lastSyncFinishedAt: nowIso(),
-          lastError: formatError(error),
-        })
+        if (isCancelledError(error)) {
+          await finishJob(job.id, "cancelled", `已停止：${repo.name}`)
+          return
+        }
         await finishJob(job.id, "failed", `同步失败：${repo.name}`, formatError(error))
+      } finally {
+        if (activeRepoJobs.get(repoId) === job.id) {
+          activeRepoJobs.delete(repoId)
+        }
+        activeJobControllers.delete(job.id)
       }
     })
   })
@@ -1235,9 +1241,7 @@ export async function requestRemoveRepo(repoId: string) {
     throw new Error("仓库不存在")
   }
 
-  const stateStore = await readStateStore()
-  const currentState = stateStore.states.find((state) => state.repoId === repoId) || createRepoState(repoId)
-  if (currentState.status === "syncing" || currentState.status === "deleting") {
+  if (await hasActiveRepoJob(repoId)) {
     return { queued: false }
   }
 
@@ -1247,28 +1251,21 @@ export async function requestRemoveRepo(repoId: string) {
     repoName: repo.name,
     message: "等待删除仓库",
   })
-
-  await saveStatePatch(repoId, {
-    status: "deleting",
-    statusMessage: "正在删除仓库",
-    deleteStartedAt: nowIso(),
-    lastError: null,
-    lastJobId: job.id,
-  })
+  const controller = new AbortController()
+  activeRepoJobs.set(repoId, job.id)
+  activeJobControllers.set(job.id, controller)
 
   queueBackgroundTask(async () => {
     await withRepoLock(repoId, async () => {
       try {
+        if (controller.signal.aborted) {
+          throw new Error("任务已取消")
+        }
         await startJob(job.id, `开始删除仓库 ${repo.name}`)
         const latestConfig = await readConfigStore()
         latestConfig.repos = latestConfig.repos.filter((item) => item.id !== repoId)
         await writeConfigStore(latestConfig)
         await appendJobLog(job.id, "info", "已移除仓库配置")
-
-        const latestState = await readStateStore()
-        latestState.states = latestState.states.filter((item) => item.repoId !== repoId)
-        await writeStateStore(latestState)
-        await appendJobLog(job.id, "info", "已移除仓库状态")
 
         await fs.rm(getRepoDirectory(repoId), { recursive: true, force: true })
         await appendJobLog(job.id, "info", "已删除本地仓库目录")
@@ -1276,13 +1273,16 @@ export async function requestRemoveRepo(repoId: string) {
         await maybeAutoReloadMemeApi(job.id)
         await finishJob(job.id, "succeeded", `删除完成：${repo.name}`)
       } catch (error) {
-        await saveStatePatch(repoId, {
-          status: "error",
-          statusMessage: "删除失败",
-          deleteStartedAt: null,
-          lastError: formatError(error),
-        })
+        if (isCancelledError(error)) {
+          await finishJob(job.id, "cancelled", `已停止：${repo.name}`)
+          return
+        }
         await finishJob(job.id, "failed", `删除失败：${repo.name}`, formatError(error))
+      } finally {
+        if (activeRepoJobs.get(repoId) === job.id) {
+          activeRepoJobs.delete(repoId)
+        }
+        activeJobControllers.delete(job.id)
       }
     })
   })
@@ -1307,11 +1307,6 @@ export async function updateRepoMemeRoot(repoId: string, memeRoot: string) {
     customMemeRoot: cleanRoot,
   }
   await writeConfigStore(configStore)
-  await saveStatePatch(repoId, {
-    memeRoot: cleanRoot,
-    statusMessage: "Meme Root 已更新，请重新同步",
-    lastError: null,
-  })
   await rebuildManagedMemes()
   await maybeAutoReloadMemeApi()
 }
@@ -1339,6 +1334,33 @@ export async function reloadMemeApi() {
 
 export async function listJobs() {
   return (await readJobStore()).jobs.slice(0, 100)
+}
+
+export async function cancelJob(jobId: string) {
+  const jobStore = await readJobStore()
+  const job = jobStore.jobs.find((item) => item.id === jobId)
+  if (!job) {
+    throw new Error("任务不存在")
+  }
+
+  if (job.status !== "pending" && job.status !== "running") {
+    return { cancelled: false, status: job.status }
+  }
+
+  const controller = activeJobControllers.get(jobId)
+  if (controller) {
+    await appendJobLog(jobId, "info", "收到停止请求，正在终止任务")
+    controller.abort()
+  } else {
+    await finishJob(jobId, "cancelled", "已丢弃过期任务记录")
+  }
+
+  if (job.repoId && activeRepoJobs.get(job.repoId) === jobId) {
+    activeRepoJobs.delete(job.repoId)
+  }
+  activeJobControllers.delete(jobId)
+
+  return { cancelled: true }
 }
 
 export function subscribeJobEvents(listener: (event: JobEvent) => void) {
