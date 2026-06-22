@@ -1,7 +1,7 @@
 "use client"
 
 import { Fragment, useState } from "react"
-import { AlertTriangle, Plus, Trash2, GitBranch, RefreshCw, Power, FolderArchive } from "lucide-react"
+import { AlertTriangle, Plus, Trash2, GitBranch, RefreshCw, Power, FolderArchive, Square } from "lucide-react"
 
 import type { DashboardData, ManagedRepo } from "@/lib/meme-manager"
 import type { FlashMessage } from "./dashboard-shell"
@@ -144,6 +144,21 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
     }
   }
 
+  async function handleStopJob(repoId: string, jobId: string) {
+    setPending(repoId, "stopping")
+    try {
+      await fetchJson(`/api/jobs/${jobId}/cancel`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      })
+      await refreshNow()
+    } catch (error) {
+      setFlash({ type: "error", text: error instanceof Error ? error.message : "停止任务失败" })
+    } finally {
+      setPending(repoId)
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -196,6 +211,7 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
           data.repos.map((repo) => {
             const localPending = pendingRepoIds[repo.id]
             const busy = repo.status === "syncing" || repo.status === "deleting" || Boolean(localPending)
+            const canStop = (repo.status === "syncing" || repo.status === "deleting") && Boolean(repo.lastJobId)
             const conflicts = repo.conflicts || []
             const tone = getRepoTone(repo.status)
 
@@ -284,6 +300,12 @@ export function RepositoriesView({ data, refreshNow, setFlash, fetchJson }: Repo
                     {localPending === "syncing" ? <RefreshCw className="size-3 animate-spin mr-1.5" /> : null}
                     {localPending === "syncing" ? "同步中" : "同步"}
                   </Button>
+                  {canStop ? (
+                    <Button type="button" variant="outline" size="sm" onClick={() => void handleStopJob(repo.id, repo.lastJobId as string)} disabled={localPending === "stopping"} className="h-8 text-xs w-20 border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-900/60 dark:text-amber-400 dark:hover:bg-amber-950/40">
+                      <Square className="size-3 mr-1.5" />
+                      {localPending === "stopping" ? "停止中" : "停止"}
+                    </Button>
+                  ) : null}
                   <Button type="button" variant="outline" size="sm" onClick={() => void handleToggle(repo.id, !repo.enabled)} disabled={busy} className="h-8 text-xs w-20">
                     <Power className={`size-3 mr-1.5 ${repo.enabled ? "text-rose-500" : "text-emerald-500"}`} />
                     {repo.enabled ? "停用" : "启用"}
